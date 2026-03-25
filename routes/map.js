@@ -110,7 +110,7 @@ router.get('/posts/:id', (req, res) => {
 });
 
 // ピン投稿
-router.post('/posts', requireLogin, upload.single('photo'), (req, res) => {
+router.post('/posts', requireApproved, upload.single('photo'), (req, res) => {
   const { title, content, category, lat, lng } = req.body;
   if (!title || !lat || !lng) {
     return res.status(400).json({ error: 'タイトル・位置情報は必須です' });
@@ -146,7 +146,7 @@ router.post('/posts', requireLogin, upload.single('photo'), (req, res) => {
 });
 
 // コメント投稿
-router.post('/posts/:id/comments', requireLogin, (req, res) => {
+router.post('/posts/:id/comments', requireApproved, (req, res) => {
   const { content } = req.body;
   if (!content) return res.status(400).json({ error: 'コメント内容が必要です' });
 
