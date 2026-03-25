@@ -79,7 +79,7 @@ router.get('/line', (req, res) => {
     client_id: LINE_CHANNEL_ID,
     redirect_uri: callbackUrl,
     state,
-    scope: 'profile openid'
+    scope: 'profile'
   });
   if (isAndroid) params.set('disable_auto_login', 'true');
 
