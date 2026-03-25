@@ -196,6 +196,15 @@ function initDB() {
     )
   `);
 
+  // セッション永続化テーブル
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      sid TEXT PRIMARY KEY,
+      data TEXT NOT NULL,
+      expires INTEGER NOT NULL
+    )
+  `);
+
   // ニックネームログイン用カラム追加（マイグレーション）
   try { db.exec("ALTER TABLE users ADD COLUMN nickname TEXT"); } catch(e) {}
   try { db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT"); } catch(e) {}

@@ -3,6 +3,35 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const { initDB } = require('./db/init');
+const { getDB } = require('./db/database');
+
+// SQLiteセッションストア（デプロイをまたいでセッションを保持）
+class SQLiteStore extends session.Store {
+  get(sid, cb) {
+    try {
+      const row = getDB().prepare('SELECT data, expires FROM sessions WHERE sid=?').get(sid);
+      if (!row) return cb(null, null);
+      if (Date.now() > row.expires) {
+        getDB().prepare('DELETE FROM sessions WHERE sid=?').run(sid);
+        return cb(null, null);
+      }
+      cb(null, JSON.parse(row.data));
+    } catch(e) { cb(e); }
+  }
+  set(sid, session, cb) {
+    try {
+      const expires = Date.now() + (session.cookie?.maxAge || 7*24*60*60*1000);
+      getDB().prepare('INSERT OR REPLACE INTO sessions (sid,data,expires) VALUES (?,?,?)').run(sid, JSON.stringify(session), expires);
+      cb(null);
+    } catch(e) { cb(e); }
+  }
+  destroy(sid, cb) {
+    try {
+      getDB().prepare('DELETE FROM sessions WHERE sid=?').run(sid);
+      cb(null);
+    } catch(e) { cb(e); }
+  }
+}
 
 const authRoutes      = require('./routes/auth');
 const mapRoutes       = require('./routes/map');
@@ -24,8 +53,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// セッション設定（メモリストア：Railway単一インスタンス向け）
+// セッション設定（SQLite永続化）
 app.use(session({
+  store: new SQLiteStore(),
   secret: process.env.SESSION_SECRET || 'dao-v2-secret',
   resave: false,
   saveUninitialized: false,
