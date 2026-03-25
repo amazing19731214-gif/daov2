@@ -62,6 +62,10 @@ router.get('/line', (req, res) => {
     db.prepare('INSERT OR REPLACE INTO oauth_states (state, callback_url) VALUES (?, ?)').run(state, callbackUrl);
   } catch(e) { console.error('oauth_states insert error:', e.message); }
 
+  // AndroidのChromeではLINEアプリが横取りしてエラーになるためdisable_auto_loginを追加
+  const ua = req.headers['user-agent'] || '';
+  const isAndroid = /android/i.test(ua);
+
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: LINE_CHANNEL_ID,
@@ -69,6 +73,8 @@ router.get('/line', (req, res) => {
     state,
     scope: 'profile openid'
   });
+  if (isAndroid) params.set('disable_auto_login', 'true');
+
   const lineUrl = `https://access.line.me/oauth2/v2.1/authorize?${params}`;
   req.session.save(() => res.redirect(lineUrl));
 });
