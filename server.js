@@ -25,7 +25,7 @@ class SQLiteStore extends session.Store {
     try {
       const expires = Date.now() + (session.cookie?.maxAge || 7*24*60*60*1000);
       const data = JSON.stringify(session);
-      getDB().prepare('INSERT OR REPLACE INTO sessions (sid,data,expires) VALUES (?,?,?)').run(sid, data, expires);
+      getDB().prepare('INSERT OR REPLACE INTO sessions (sid,data,expires) VALUES (?,?,?)').run([sid, data, expires]);
       console.log('[session] set: saved userId=', session.userId, 'sid=', sid);
       cb(null);
     } catch(e) { console.error('[session] set error:', e); cb(e); }
