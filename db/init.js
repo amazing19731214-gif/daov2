@@ -412,10 +412,12 @@ function initDB() {
   const adminExists = db.prepare("SELECT id FROM users WHERE status = 'admin' LIMIT 1").get();
   if (!adminExists) {
     db.prepare(`
-      INSERT INTO users (line_id, name, address, status)
-      VALUES ('admin_line_id', '管理者', '自治会本部', 'admin')
+      INSERT INTO users (line_id, nickname, name, address, status)
+      VALUES ('admin_line_id', 'admin', '管理者', '自治会本部', 'admin')
     `).run();
-    console.log('✅ 初期管理者作成: line_id = admin_line_id');
+    console.log('✅ 初期管理者作成: nickname = admin');
+  } else if (!adminExists.nickname) {
+    db.prepare("UPDATE users SET nickname='admin' WHERE id=?").run(adminExists.id);
   }
 
   console.log('✅ DB初期化完了');
