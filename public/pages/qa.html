@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>よくある質問 - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  .qa-header-card {
+    background: linear-gradient(135deg, #1a7a6e, #2d9b8a);
+    color: #fff;
+    padding: 20px 16px 24px;
+    margin-bottom: 0;
+  }
+  .qa-header-card .sub { font-size: 12px; opacity: .8; margin-bottom: 4px; }
+  .qa-header-card h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  .qa-header-card p { font-size: 13px; opacity: .9; line-height: 1.5; }
+
+  .search-wrap {
+    background: #f0faf8;
+    padding: 12px 16px;
+    border-bottom: 1px solid #d1faf4;
+  }
+  .search-wrap input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid #b2ece4;
+    border-radius: 10px;
+    font-size: 14px;
+    background: #fff;
+    box-sizing: border-box;
+  }
+  .search-wrap input:focus { outline: none; border-color: #1a7a6e; }
+
+  .qa-section { padding: 16px 16px 4px; }
+  .qa-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a7a6e;
+    background: #f0faf8;
+    padding: 7px 12px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .qa-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,.05);
+  }
+  .qa-q-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .q-badge {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: #1a7a6e;
+    color: #fff;
+    font-weight: 800;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .q-text {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 600;
+    color: #111;
+    line-height: 1.5;
+  }
+  .qa-toggle-btn {
+    background: #f1f5f9;
+    color: #475569;
+    border: none;
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .qa-card.open .qa-toggle-btn {
+    background: #d1fae5;
+    color: #065f46;
+  }
+
+  .qa-answer {
+    display: none;
+    padding: 4px 14px 14px 60px;
+    font-size: 13px;
+    color: #374151;
+    line-height: 1.75;
+    border-top: 1px solid #f3f4f6;
+    padding-top: 12px;
+  }
+  .a-badge {
+    display: inline-flex;
+    align-items: center;
+    background: #f0fdf4;
+    color: #16a34a;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 20px;
+    margin-bottom: 8px;
+    border: 1px solid #bbf7d0;
+  }
+  .qa-card.open .qa-answer { display: block; }
+
+  .no-result { text-align: center; color: #9ca3af; padding: 40px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="qa-header-card">
+  <div class="sub">FAQ</div>
+  <h2>よくある質問</h2>
+  <p>自治会に関するよくある質問をまとめました。<br>気になる質問を押すと答えが開きます。</p>
+</div>
+
+<div class="search-wrap">
+  <input type="text" id="search-input" placeholder="🔍 キーワードで検索…" oninput="filterQA(this.value)">
+</div>
+
+<div id="qa-list" style="padding-bottom:80px;">
+  <div class="loading" style="padding:40px 0;text-align:center;">読み込み中…</div>
+</div>
+
+<!-- タブバー -->
+<nav class="tab-bar">
+  <a class="tab-item" href="/"><span class="icon">🗺️</span>地図</a>
+  <a class="tab-item" href="/pages/proposals"><span class="icon">📋</span>議題</a>
+  <a class="tab-item" href="/pages/post"><span class="icon">✏️</span>投稿</a>
+  <a class="tab-item" href="/pages/schedule"><span class="icon">📅</span>予定</a>
+  <a class="tab-item active" href="/pages/qa"><span class="icon">❓</span>Q&A</a>
+  <a class="tab-item" href="/pages/mypage"><span class="icon">👤</span>My</a>
+</nav>
+
+<div id="toast" class="toast"></div>
+<script src="/js/common.js"></script>
+<script>
+  let allQA = [];
+
+  const CATEGORY_ICONS = {
+    '加入・退会': '📝', '会費': '💴', '役員・運営': '🏛️',
+    '行事・活動': '🎉', '清掃・ゴミ': '🧹', '防災': '🚨',
+    '回覧板・お知らせ': '📬', 'このアプリについて': '📱',
+    'このアプリ': '📱', '一般': '❓',
+  };
+
+  async function init() {
+    const res = await fetch('/api/qa');
+    allQA = await res.json();
+    renderQA(allQA);
+  }
+
+  function renderQA(items) {
+    const container = document.getElementById('qa-list');
+    if (items.length === 0) {
+      container.innerHTML = '<div class="no-result">該当するQ&Aが見つかりません</div>';
+      return;
+    }
+    const groups = {};
+    items.forEach(item => {
+      const cat = item.category || '一般';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(item);
+    });
+    let html = '';
+    for (const [cat, qaItems] of Object.entries(groups)) {
+      const icon = CATEGORY_ICONS[cat] || '❓';
+      html += `<div class="qa-section">
+        <span class="qa-section-title">${icon} ${escHtml(cat)}</span>`;
+      qaItems.forEach(item => {
+        html += `
+          <div class="qa-card" id="qa-${item.id}">
+            <div class="qa-q-row" onclick="toggleQA(${item.id})">
+              <div class="q-badge">Q</div>
+              <div class="q-text">${escHtml(item.question)}</div>
+              <button class="qa-toggle-btn">答えを見る</button>
+            </div>
+            <div class="qa-answer">
+              <span class="a-badge">A. 回答</span>
+              <div>${escHtml(item.answer)}</div>
+            </div>
+          </div>`;
+      });
+      html += `</div>`;
+    }
+    container.innerHTML = html;
+  }
+
+  function toggleQA(id) {
+    const el = document.getElementById('qa-' + id);
+    if (!el) return;
+    el.classList.toggle('open');
+    const btn = el.querySelector('.qa-toggle-btn');
+    if (btn) btn.textContent = el.classList.contains('open') ? '閉じる' : '答えを見る';
+  }
+
+  function filterQA(keyword) {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) { renderQA(allQA); return; }
+    const filtered = allQA.filter(item =>
+      item.question.toLowerCase().includes(kw) ||
+      item.answer.toLowerCase().includes(kw) ||
+      (item.category || '').toLowerCase().includes(kw)
+    );
+    renderQA(filtered);
+    setTimeout(() => {
+      document.querySelectorAll('.qa-card').forEach(el => {
+        el.classList.add('open');
+        const btn = el.querySelector('.qa-toggle-btn');
+        if (btn) btn.textContent = '閉じる';
+      });
+    }, 50);
+  }
+
+  function escHtml(str) {
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  init();
+</script>
+</body>
+</html>

@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>議題作成 - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+  <a href="/pages/proposals" class="back-btn">←</a>
+  <h1>議題を作成</h1>
+</div>
+
+<div class="page" style="padding-top:16px;">
+  <div class="card">
+    <div class="form-group">
+      <label class="form-label">タイトル <span style="color:#ef4444;">*</span></label>
+      <input type="text" id="title" class="form-input" placeholder="例：公園の遊具を新しくしてほしい">
+    </div>
+    <div class="form-group">
+      <label class="form-label">内容</label>
+      <textarea id="content" class="form-textarea" placeholder="議題の背景・詳細を書いてください…"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">カスタム選択肢（任意）</label>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">賛成/反対以外の選択肢を追加できます（例：10月・11月・12月）</p>
+      <div id="options-list"></div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addOptionField()">＋ 選択肢を追加</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">投票開始日時（任意）</label>
+      <input type="datetime-local" id="vote_start" class="form-input">
+    </div>
+    <div class="form-group">
+      <label class="form-label">投票終了日時（任意）</label>
+      <input type="datetime-local" id="vote_end" class="form-input">
+    </div>
+    <button class="btn btn-primary btn-block" style="margin-bottom:80px;" onclick="submit()">作成する</button>
+  </div>
+</div>
+
+<!-- タブバー -->
+<nav class="tab-bar">
+  <a class="tab-item" href="/"><span class="icon">🗺️</span>地図</a>
+  <a class="tab-item active" href="/pages/proposals"><span class="icon">📋</span>議題</a>
+  <a class="tab-item" href="/pages/post"><span class="icon">✏️</span>投稿</a>
+  <a class="tab-item" href="/pages/schedule"><span class="icon">📅</span>予定</a>
+  <a class="tab-item" href="/pages/qa"><span class="icon">❓</span>Q&A</a>
+  <a class="tab-item" href="/pages/mypage"><span class="icon">👤</span>My</a>
+</nav>
+
+<div id="toast" class="toast"></div>
+<script src="/js/common.js"></script>
+<script>
+  async function init() {
+    const user = await fetchCurrentUser();
+    if (!['approved','officer','admin'].includes(user.status)) {
+      showToast('承認済みメンバーのみ議題を作成できます');
+      setTimeout(() => window.location.href = '/pages/proposals', 2000);
+    }
+  }
+  init();
+
+  let optionCount = 0;
+
+  function addOptionField() {
+    const id = 'opt-' + (optionCount++);
+    const div = document.createElement('div');
+    div.id = id;
+    div.style.cssText = 'display:flex;gap:8px;margin-bottom:6px;align-items:center;';
+    div.innerHTML = `
+      <input type="text" class="form-input option-input" placeholder="例：10月" style="flex:1;margin:0;">
+      <button type="button" class="btn btn-secondary btn-sm" style="padding:6px 10px;margin:0;" onclick="document.getElementById('${id}').remove()">✕</button>
+    `;
+    document.getElementById('options-list').appendChild(div);
+  }
+
+  async function submit() {
+    const title = document.getElementById('title').value.trim();
+    if (!title) { showToast('タイトルを入力してください'); return; }
+
+    const options = Array.from(document.querySelectorAll('.option-input'))
+      .map(i => i.value.trim()).filter(v => v);
+
+    const body = {
+      title,
+      content:    document.getElementById('content').value,
+      vote_start: document.getElementById('vote_start').value || null,
+      vote_end:   document.getElementById('vote_end').value   || null,
+      options
+    };
+
+    const res = await fetch('/api/proposals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('議題を作成しました！');
+      setTimeout(() => window.location.href = `/pages/proposal-detail?id=${data.id}`, 1500);
+    } else {
+      showToast(data.error || '作成に失敗しました');
+    }
+  }
+</script>
+</body>
+</html>

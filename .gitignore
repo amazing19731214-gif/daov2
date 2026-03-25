@@ -1,0 +1,8 @@
+node_modules/
+.env
+dao.db
+dao.db.lock/
+sessions/
+uploads/
+/tmp/
+*.log

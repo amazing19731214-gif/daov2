@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>マイページ - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+  <h1>👤 マイページ</h1>
+</div>
+
+<div class="page" id="page-body">
+  <div class="loading">読み込み中…</div>
+</div>
+
+<!-- タブバー -->
+<nav class="tab-bar">
+  <a class="tab-item" href="/"><span class="icon">🗺️</span>地図</a>
+  <a class="tab-item" href="/pages/proposals"><span class="icon">📋</span>議題</a>
+  <a class="tab-item" href="/pages/post"><span class="icon">✏️</span>投稿</a>
+  <a class="tab-item" href="/pages/schedule"><span class="icon">📅</span>予定</a>
+  <a class="tab-item" href="/pages/qa"><span class="icon">❓</span>Q&A</a>
+  <a class="tab-item active" href="/pages/mypage"><span class="icon">👤</span>My</a>
+</nav>
+
+<div id="toast" class="toast"></div>
+<script src="/js/common.js"></script>
+<script>
+  async function init() {
+    const user = await fetchCurrentUser();
+
+    const resLogs    = await fetch('/api/points/logs');
+    const resRanking = await fetch('/api/points/ranking');
+    const logs    = await resLogs.json();
+    const ranking = await resRanking.json();
+
+    const myRank = ranking.findIndex(r => r.id === user.id) + 1;
+
+    const statusColor = {
+      provisional: '#6b7280', pending_review: '#b45309',
+      approved: '#16a34a', officer: '#2563eb', admin: '#7c3aed'
+    };
+
+    const logsHtml = logs.length > 0
+      ? logs.map(l => `
+          <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3f4f6;">
+            <div>
+              <div style="font-size:14px;">${l.reason}</div>
+              <div style="font-size:11px;color:#9ca3af;">${formatDate(l.created_at)}</div>
+            </div>
+            <div style="font-size:16px;font-weight:700;color:${l.points>0?'#16a34a':'#dc2626'};">
+              ${l.points > 0 ? '+' : ''}${l.points}pt
+            </div>
+          </div>`).join('')
+      : '<p style="color:#9ca3af;padding:12px 0;">ポイント履歴がありません</p>';
+
+    const rankingHtml = ranking.map((r, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;
+        border-bottom:1px solid #f3f4f6;${r.id===user.id?'background:#eff6ff;border-radius:8px;padding:10px 8px;':''}"
+      >
+        <div style="font-size:20px;font-weight:800;min-width:32px;text-align:center;">
+          ${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}
+        </div>
+        <div style="flex:1;font-weight:${r.id===user.id?700:400};">${r.name}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--primary);">${r.points}pt</div>
+      </div>`).join('');
+
+    const statusBadgeHtml = `
+      <span style="background:${statusColor[user.status]||'#6b7280'};color:#fff;
+        padding:3px 12px;border-radius:999px;font-size:13px;font-weight:700;">
+        ${USER_STATUS_LABELS[user.status] || user.status}
+      </span>`;
+
+    document.getElementById('page-body').innerHTML = `
+      <!-- プロフィール -->
+      <div class="card" style="text-align:center;">
+        <div style="font-size:48px;margin-bottom:8px;">👤</div>
+        <h2 style="font-size:20px;font-weight:800;">${user.name}</h2>
+        <div style="margin:8px 0;">${statusBadgeHtml}</div>
+        ${user.status==='provisional' ? `
+          <a href="/pages/register" class="btn btn-primary btn-sm" style="margin-top:8px;">
+            本登録申請へ
+          </a>` : ''}
+      </div>
+
+      <!-- ポイント -->
+      <div class="card" style="text-align:center;">
+        <div class="points-big">${user.points}</div>
+        <div class="points-label">合計ポイント</div>
+        ${myRank > 0 ? `<div style="font-size:14px;color:#6b7280;margin-top:4px;">ランキング ${myRank}位</div>` : ''}
+      </div>
+
+      <!-- ポイントの稼ぎ方 -->
+      <div class="card" style="background:#f0fdf4;border-color:#bbf7d0;">
+        <div style="font-weight:700;margin-bottom:8px;">🎯 ポイントの稼ぎ方</div>
+        <div style="font-size:13px;line-height:2;color:#374151;">
+          📌 地図に投稿する → <strong>+3pt</strong><br>
+          💬 コメントする → <strong>+2pt</strong><br>
+          🗳️ 議題に投票 → <strong>+2pt</strong><br>
+          📖 議題を閲覧 → <strong>+1pt</strong><br>
+          👍 地図投票 → <strong>+1pt</strong>
+        </div>
+      </div>
+
+      <!-- ポイント履歴 -->
+      <div class="card">
+        <div style="font-weight:700;font-size:16px;margin-bottom:4px;">📜 ポイント履歴（最新50件）</div>
+        ${logsHtml}
+      </div>
+
+      <!-- ランキング -->
+      <div class="card">
+        <div style="font-weight:700;font-size:16px;margin-bottom:4px;">🏆 ポイントランキング</div>
+        ${rankingHtml}
+      </div>
+
+      <!-- よくある質問 -->
+      <div style="padding:0 16px 8px;">
+        <a href="/pages/qa" class="btn btn-secondary btn-block" style="display:block;text-align:center;text-decoration:none;">❓ よくある質問（Q&A）</a>
+      </div>
+
+      <!-- ログアウト -->
+      <div style="padding:0 16px 8px;">
+        <button class="btn btn-secondary btn-block" onclick="logout()">ログアウト</button>
+      </div>
+    `;
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/pages/login';
+  }
+
+  init();
+</script>
+</body>
+</html>

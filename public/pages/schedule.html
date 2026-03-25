@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>スケジュール - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  .month-tabs {
+    display: flex; overflow-x: auto; gap: 6px;
+    padding: 10px 12px; background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    scrollbar-width: none;
+  }
+  .month-tabs::-webkit-scrollbar { display: none; }
+  .month-tab {
+    flex-shrink: 0; padding: 5px 14px; border-radius: 20px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    border: 1.5px solid #e5e7eb; background: #fff; color: #6b7280;
+  }
+  .month-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .event-card {
+    background: #fff; border-radius: 12px; margin-bottom: 10px;
+    overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); display: flex;
+  }
+  .event-bar { width: 5px; flex-shrink: 0; }
+  .event-body { padding: 12px 14px; flex: 1; }
+  .event-date { font-size: 12px; color: #6b7280; margin-bottom: 2px; }
+  .event-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .event-meta { font-size: 12px; color: #9ca3af; }
+  .event-note { font-size: 12px; color: #374151; margin-top:4px; background:#f9fafb; border-radius:6px; padding:5px 8px; }
+  .cat-badge { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:10px; margin-left:6px; }
+  .empty { text-align:center; color:#9ca3af; padding:40px 0; font-size:14px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back-btn">←</a>
+  <h1>📅 年間スケジュール</h1>
+</div>
+
+<div class="month-tabs" id="month-tabs"></div>
+<div class="page" style="padding-top:12px;" id="schedule-list"></div>
+
+<!-- タブバー -->
+<nav class="tab-bar">
+  <a class="tab-item" href="/"><span class="icon">🗺️</span>地図</a>
+  <a class="tab-item" href="/pages/proposals"><span class="icon">📋</span>議題</a>
+  <a class="tab-item" href="/pages/post"><span class="icon">✏️</span>投稿</a>
+  <a class="tab-item active" href="/pages/schedule"><span class="icon">📅</span>予定</a>
+  <a class="tab-item" href="/pages/qa"><span class="icon">❓</span>Q&A</a>
+  <a class="tab-item" href="/pages/mypage"><span class="icon">👤</span>My</a>
+</nav>
+
+<div id="toast" class="toast"></div>
+<script src="/js/common.js"></script>
+<script>
+const CAT_COLOR = {
+  "役員会":"#3b82f6","定例会":"#8b5cf6","行事":"#f97316",
+  "清掃":"#22c55e","回覧・案内":"#06b6d4","棚卸・監査":"#f59e0b","その他":"#9ca3af"
+};
+const CAT_BG = {
+  "役員会":"#eff6ff","定例会":"#f5f3ff","行事":"#fff7ed",
+  "清掃":"#f0fdf4","回覧・案内":"#ecfeff","棚卸・監査":"#fffbeb","その他":"#f9fafb"
+};
+const MONTHS = [
+  {m:5,label:"5月"},{m:6,label:"6月"},{m:7,label:"7月"},{m:8,label:"8月"},
+  {m:9,label:"9月"},{m:10,label:"10月"},{m:11,label:"11月"},{m:12,label:"12月"},
+  {m:1,label:"1月"},{m:2,label:"2月"},{m:3,label:"3月"},{m:4,label:"4月"},
+];
+
+let allEvents = [];
+const nowMonth = new Date().getMonth() + 1;
+let currentMonth = MONTHS.find(m => m.m === nowMonth)?.m || 5;
+
+async function init() {
+  const res = await fetch('/api/schedule');
+  allEvents = await res.json();
+  renderTabs();
+  renderList();
+}
+
+function renderTabs() {
+  document.getElementById('month-tabs').innerHTML = MONTHS.map(({m, label}) => `
+    <button class="month-tab ${m === currentMonth ? 'active' : ''}" onclick="selectMonth(${m})">${label}</button>
+  `).join('');
+}
+
+function selectMonth(m) {
+  currentMonth = m;
+  renderTabs();
+  renderList();
+  document.querySelector('.month-tab.active')?.scrollIntoView({ behavior:'smooth', inline:'center', block:'nearest' });
+}
+
+function renderList() {
+  const items = allEvents.filter(e => e.month === currentMonth);
+  const list = document.getElementById('schedule-list');
+  if (items.length === 0) {
+    list.innerHTML = '<div class="empty">この月の予定はありません</div>';
+    return;
+  }
+  list.innerHTML = items.map(e => {
+    const color = CAT_COLOR[e.category] || '#9ca3af';
+    const bg    = CAT_BG[e.category]    || '#f9fafb';
+    const datePart = e.dow ? `${e.date_label}（${e.dow}）` : e.date_label;
+    const timePart = e.time_label ? ` ${e.time_label}` : '';
+    return `
+      <div class="event-card">
+        <div class="event-bar" style="background:${color};"></div>
+        <div class="event-body" style="background:${bg};">
+          <div class="event-date">${datePart}${timePart}</div>
+          <div class="event-title">${escHtml(e.title)}
+            <span class="cat-badge" style="background:${color}20;color:${color};">${e.category}</span>
+          </div>
+          ${e.who ? `<div class="event-meta">👥 ${escHtml(e.who)}</div>` : ''}
+          ${e.note ? `<div class="event-note">${escHtml(e.note)}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+init();
+</script>
+</body>
+</html>

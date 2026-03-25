@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>投稿 - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  #pin-map { width:100%; height:220px; border-radius:12px; margin-bottom:8px; }
+  .photo-preview { width:100%; border-radius:12px; margin-top:8px; display:none; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back-btn">←</a>
+  <h1>問題を投稿</h1>
+</div>
+
+<div class="page" style="padding:16px 0 0;">
+  <div class="card">
+    <!-- 位置選択 -->
+    <div class="form-group">
+      <label class="form-label">📍 場所（地図をタップして選択）</label>
+      <div id="pin-map"></div>
+      <p id="latlng-display" style="font-size:12px;color:#6b7280;">地図をタップして場所を選んでください</p>
+      <input type="hidden" id="lat">
+      <input type="hidden" id="lng">
+      <button class="btn btn-secondary btn-sm" style="margin-top:6px;" onclick="useCurrentLocation()">
+        📍 現在地を使う
+      </button>
+    </div>
+
+    <!-- タイトル -->
+    <div class="form-group">
+      <label class="form-label">タイトル <span style="color:#ef4444;">*</span></label>
+      <input type="text" id="title" class="form-input" placeholder="例：〇〇公園前の道路が陥没している">
+    </div>
+
+    <!-- カテゴリ -->
+    <div class="form-group">
+      <label class="form-label">カテゴリ</label>
+      <select id="category" class="form-select">
+        <option value="road">🚧 道路・インフラ</option>
+        <option value="safe">🚨 安全・防犯</option>
+        <option value="env">🌿 環境・清掃</option>
+        <option value="other" selected>📌 その他</option>
+      </select>
+    </div>
+
+    <!-- 重要度 -->
+    <div class="form-group">
+      <label class="form-label">重要度</label>
+      <select id="priority" class="form-select">
+        <option value="最重要">🔴 最重要</option>
+        <option value="重要">🟠 重要</option>
+        <option value="警戒">🟡 警戒</option>
+        <option value="様子見" selected>🔵 様子見</option>
+      </select>
+    </div>
+
+    <!-- 内容 -->
+    <div class="form-group">
+      <label class="form-label">詳細内容</label>
+      <textarea id="content" class="form-textarea" placeholder="問題の状況を詳しく書いてください…"></textarea>
+    </div>
+
+    <!-- 写真 -->
+    <div class="form-group">
+      <label class="form-label">写真（任意）</label>
+      <input type="file" id="photo" accept="image/*" capture="environment" onchange="previewPhoto(this)">
+      <img id="photo-preview" class="photo-preview" alt="プレビュー">
+    </div>
+
+    <button class="btn btn-primary btn-block" style="margin-bottom:80px;" onclick="submitPost()">投稿する</button>
+  </div>
+</div>
+
+<!-- タブバー -->
+<nav class="tab-bar">
+  <a class="tab-item" href="/"><span class="icon">🗺️</span>地図</a>
+  <a class="tab-item" href="/pages/proposals"><span class="icon">📋</span>議題</a>
+  <a class="tab-item active" href="/pages/post"><span class="icon">✏️</span>投稿</a>
+  <a class="tab-item" href="/pages/schedule"><span class="icon">📅</span>予定</a>
+  <a class="tab-item" href="/pages/qa"><span class="icon">❓</span>Q&A</a>
+  <a class="tab-item" href="/pages/mypage"><span class="icon">👤</span>My</a>
+</nav>
+
+<div id="toast" class="toast"></div>
+
+<script src="/js/common.js"></script>
+<script>
+  let pinMap, pinMarker;
+
+  async function initPage() {
+    const user = await fetchCurrentUser();
+    // 仮登録・承認待ちでも投稿閲覧は可能だが投稿はログイン必須
+  }
+
+  window.initPinMap = function() {
+    initPage();
+
+    pinMap = new google.maps.Map(document.getElementById('pin-map'), {
+      center: { lat: 35.6812, lng: 139.7671 },
+      zoom: 15,
+      disableDefaultUI: true,
+      zoomControl: true
+    });
+
+    // 地図タップでピン設置
+    pinMap.addListener('click', e => {
+      setPin(e.latLng.lat(), e.latLng.lng());
+    });
+
+    // 現在地を初期表示
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        const c = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        pinMap.setCenter(c);
+      });
+    }
+  };
+
+  function setPin(lat, lng) {
+    if (pinMarker) pinMarker.setMap(null);
+    pinMarker = new google.maps.Marker({
+      position: { lat, lng }, map: pinMap, title: '投稿場所'
+    });
+    document.getElementById('lat').value = lat;
+    document.getElementById('lng').value = lng;
+    document.getElementById('latlng-display').textContent =
+      `選択済: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  }
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) { showToast('位置情報が使えません'); return; }
+    navigator.geolocation.getCurrentPosition(pos => {
+      setPin(pos.coords.latitude, pos.coords.longitude);
+      pinMap.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      pinMap.setZoom(17);
+    }, () => showToast('位置情報を取得できませんでした'));
+  }
+
+  function previewPhoto(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.getElementById('photo-preview');
+      img.src = e.target.result;
+      img.style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function submitPost() {
+    const lat   = document.getElementById('lat').value;
+    const lng   = document.getElementById('lng').value;
+    const title = document.getElementById('title').value.trim();
+
+    if (!lat || !lng) { showToast('場所を選択してください'); return; }
+    if (!title)       { showToast('タイトルを入力してください'); return; }
+
+    const form = new FormData();
+    form.append('title',    title);
+    form.append('content',  document.getElementById('content').value);
+    form.append('category', document.getElementById('category').value);
+    form.append('priority', document.getElementById('priority').value);
+    form.append('lat',      lat);
+    form.append('lng',      lng);
+    const photoFile = document.getElementById('photo').files[0];
+    if (photoFile) form.append('photo', photoFile);
+
+    const res = await fetch('/api/map/posts', { method: 'POST', body: form });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast('投稿しました！ +3pt');
+      setTimeout(() => window.location.href = '/', 1500);
+    } else {
+      showToast(data.error || '投稿に失敗しました');
+    }
+  }
+</script>
+<script>
+  fetch('/api/auth/me').then(() => {
+    const script = document.createElement('script');
+    const key = 'AIzaSyAkhEJzsTLr4KyeHj5VQ3N1qoBNAS9aQ2s';
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=initPinMap&language=ja`;
+    script.async = true;
+    document.head.appendChild(script);
+  });
+</script>
+</body>
+</html>

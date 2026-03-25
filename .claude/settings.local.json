@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(timeout 5 node server.js)",
+      "Bash(rm -rf /c/Users/keiichi-koseki/Documents/DAOv2/dao.db*)",
+      "Bash(ls /c/Users/keiichi-koseki/Documents/DAOv2/*.db*)",
+      "Bash(node -e \"const {getDB}=require\\(''./db/database''\\);const db=getDB\\(\\);console.log\\(JSON.stringify\\(db.prepare\\(''SELECT id,line_id,name,status FROM users''\\).all\\(\\),null,2\\)\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(curl -s -X POST http://localhost:3000/api/auth/line-mock -H \"Content-Type: application/json\" -d '{\"\"line_id\"\":\"\"test123\"\",\"\"display_name\"\":\"\"山田\"\"}')",
+      "Bash(ls c:/Users/keiichi-koseki/Documents/DAOv2/dao.db*)"
+    ]
+  }
+}

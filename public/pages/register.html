@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>本登録 - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back-btn">←</a>
+  <h1>本登録申請</h1>
+</div>
+
+<div class="page" style="padding-top:16px;">
+  <div id="status-area" style="padding: 0 16px 8px;"></div>
+
+  <div class="card">
+    <p style="font-size:14px;color:#6b7280;margin-bottom:16px;">
+      正会員になるには本登録が必要です。管理者の承認後、投票・コメントが利用できます。
+    </p>
+
+    <div class="form-group">
+      <label class="form-label">氏名 <span style="color:#ef4444;">*</span></label>
+      <input type="text" id="name" class="form-input" placeholder="山田 太郎">
+    </div>
+    <div class="form-group">
+      <label class="form-label">住所 <span style="color:#ef4444;">*</span></label>
+      <input type="text" id="address" class="form-input" placeholder="○○市△△町1-2-3">
+    </div>
+    <div class="form-group">
+      <label class="form-label">電話番号 <span style="color:#ef4444;">*</span></label>
+      <input type="tel" id="phone" class="form-input" placeholder="090-1234-5678">
+    </div>
+
+    <button class="btn btn-primary btn-block" style="margin-bottom:80px;" onclick="submitRegister()">
+      申請する
+    </button>
+  </div>
+
+  <div style="padding:0 16px;">
+    <button class="btn btn-secondary btn-block" onclick="logout()">ログアウト</button>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="/js/common.js"></script>
+<script>
+  (async () => {
+    const user = await fetchCurrentUser();
+    const area = document.getElementById('status-area');
+
+    // ログイン時の名前を自動入力
+    if (user.name && user.name !== '名前未設定') {
+      document.getElementById('name').value = user.name;
+    }
+
+    if (user.status === 'pending_review') {
+      area.innerHTML = `
+        <div class="card" style="background:#fef3c7;border-color:#fcd34d;">
+          <p style="font-weight:700;color:#b45309;">⏳ 承認待ちです</p>
+          <p style="font-size:13px;color:#92400e;margin-top:4px;">管理者の承認をお待ちください。</p>
+        </div>`;
+      // フォームを非表示
+      document.querySelector('.card:last-of-type').style.display = 'none';
+    } else if (user.status !== 'provisional') {
+      window.location.href = '/';
+    }
+  })();
+
+  async function submitRegister() {
+    const name    = document.getElementById('name').value.trim();
+    const address = document.getElementById('address').value.trim();
+    const phone   = document.getElementById('phone').value.trim();
+
+    if (!name || !address || !phone) {
+      showToast('すべての項目を入力してください');
+      return;
+    }
+
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, address, phone })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast('申請を受け付けました！');
+      setTimeout(() => window.location.reload(), 1500);
+    } else {
+      showToast(data.error || '申請に失敗しました');
+    }
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/pages/login';
+  }
+</script>
+</body>
+</html>

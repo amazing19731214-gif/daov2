@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>管理者ページ - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  .admin-nav {
+    position: sticky;
+    top: 57px;
+    z-index: 40;
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 0 4px;
+  }
+  .admin-nav::-webkit-scrollbar { display: none; }
+  .admin-nav-btn {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-bottom: 2.5px solid transparent;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: color .15s;
+  }
+  .admin-nav-btn.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+  }
+  .admin-nav-btn .badge {
+    background: #ef4444;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 99px;
+    min-width: 16px;
+    text-align: center;
+  }
+  .admin-section { display: none; padding-bottom: 100px; }
+  .admin-section.active { display: block; }
+  .section-action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 8px;
+  }
+  .section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #111;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back-btn">←</a>
+  <h1>⚙️ 管理者</h1>
+</div>
+
+<!-- セクションナビ -->
+<nav class="admin-nav" id="admin-nav">
+  <button class="admin-nav-btn active" data-section="pending" onclick="switchSection('pending', this)">
+    ⏳ 承認待ち <span class="badge" id="nav-badge-pending" style="display:none;">0</span>
+  </button>
+  <button class="admin-nav-btn" data-section="users" onclick="switchSection('users', this)">
+    👥 ユーザー
+  </button>
+  <button class="admin-nav-btn" data-section="posts" onclick="switchSection('posts', this)">
+    🗺️ 地図投稿
+  </button>
+  <button class="admin-nav-btn" data-section="proposals" onclick="switchSection('proposals', this)">
+    📋 議題
+  </button>
+  <button class="admin-nav-btn" data-section="schedule" onclick="switchSection('schedule', this)">
+    📅 予定
+  </button>
+  <button class="admin-nav-btn" data-section="qa" onclick="switchSection('qa', this)">
+    ❓ Q&amp;A
+  </button>
+</nav>
+
+<div id="page-body">
+  <!-- 承認待ち -->
+  <div class="admin-section active" id="section-pending">
+    <div class="loading" style="padding:40px 0;text-align:center;">読み込み中…</div>
+  </div>
+  <!-- ユーザー -->
+  <div class="admin-section" id="section-users">
+    <div class="loading" style="padding:40px 0;text-align:center;">読み込み中…</div>
+  </div>
+  <!-- 地図投稿 -->
+  <div class="admin-section" id="section-posts">
+    <div class="loading" style="padding:40px 0;text-align:center;">読み込み中…</div>
+  </div>
+  <!-- 議題 -->
+  <div class="admin-section" id="section-proposals">
+    <div class="loading" style="padding:40px 0;text-align:center;">読み込み中…</div>
+  </div>
+  <!-- スケジュール -->
+  <div class="admin-section" id="section-schedule">
+    <div class="loading" style="padding:40px 0;text-align:center;">読み込み中…</div>
+  </div>
+  <!-- Q&A -->
+  <div class="admin-section" id="section-qa">
+    <div class="loading" style="padding:40px 0;text-align:center;">読み込み中…</div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<script src="/js/common.js"></script>
+<script>
+  const CATEGORY_MAP = { road:'🚧 道路', safe:'🚨 安全', env:'🌿 環境', other:'📌 その他' };
+  const STATUS_MAP = { open:'⚠️ 未対応', in_progress:'🔧 対応中', resolved:'✅ 解決済' };
+
+  let _data = {};
+
+  function switchSection(name, btn) {
+    document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.admin-nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('section-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  function escHtml(str) {
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');
+  }
+
+  async function init() {
+    const user = await fetchCurrentUser();
+    if (user.status !== 'admin') {
+      showToast('管理者のみアクセスできます');
+      setTimeout(() => window.location.href = '/', 2000);
+      return;
+    }
+    loadAll();
+  }
+
+  async function loadAll() {
+    const [resPending, resAll, resPosts, resProposals, resSched, resQA] = await Promise.all([
+      fetch('/api/admin/pending'),
+      fetch('/api/admin/users'),
+      fetch('/api/admin/posts'),
+      fetch('/api/admin/proposals'),
+      fetch('/api/schedule'),
+      fetch('/api/qa')
+    ]);
+    _data.pending   = await resPending.json();
+    _data.users     = await resAll.json();
+    _data.posts     = await resPosts.json();
+    _data.proposals = await resProposals.json();
+    _data.schedule  = await resSched.json();
+    _data.qa        = await resQA.json();
+
+    renderPending();
+    renderUsers();
+    renderPosts();
+    renderProposals();
+    renderSchedule();
+    renderQA();
+
+    // バッジ
+    if (_data.pending.length > 0) {
+      const b = document.getElementById('nav-badge-pending');
+      b.textContent = _data.pending.length;
+      b.style.display = 'inline-block';
+    }
+  }
+
+  // ── 承認待ち ──────────────────────────────────
+  function renderPending() {
+    const users = _data.pending;
+    const html = users.length > 0
+      ? users.map(u => `
+          <div class="card" style="margin:8px 16px;">
+            <div style="font-weight:700;font-size:16px;">${escHtml(u.name)}</div>
+            <div style="font-size:13px;color:#6b7280;margin:4px 0;">
+              🏠 ${escHtml(u.address||'')}　📞 ${escHtml(u.phone||'')}<br>
+              申請日: ${formatDate(u.submitted_at)}
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button class="btn btn-agree btn-sm" onclick="approve(${u.id})">✅ 承認</button>
+              <button class="btn btn-danger btn-sm" onclick="reject(${u.id})">❌ 拒否</button>
+            </div>
+          </div>`).join('')
+      : `<div style="text-align:center;padding:48px 0;color:#9ca3af;">
+           <div style="font-size:40px;margin-bottom:8px;">✅</div>
+           <div>承認待ちはいません</div>
+         </div>`;
+    document.getElementById('section-pending').innerHTML =
+      `<div class="section-action-row"><span class="section-title">⏳ 承認待ち（${users.length}件）</span></div>${html}`;
+  }
+
+  // ── ユーザー ─────────────────────────────────
+  function renderUsers() {
+    const allUsers = _data.users;
+    const html = allUsers.map(u => `
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #f3f4f6;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            ${escHtml(u.name && u.name !== 'ゲスト' ? u.name : '（名前未設定）')}
+          </div>
+          <div style="font-size:12px;color:#9ca3af;">${escHtml(u.address||'住所未登録')}　ID:${u.id}</div>
+        </div>
+        <select class="form-select" style="width:100px;padding:4px 6px;font-size:12px;"
+          onchange="changeStatus(${u.id}, this.value)">
+          <option value="provisional"    ${u.status==='provisional'?'selected':''}>仮登録</option>
+          <option value="pending_review" ${u.status==='pending_review'?'selected':''}>承認待ち</option>
+          <option value="approved"       ${u.status==='approved'?'selected':''}>正会員</option>
+          <option value="officer"        ${u.status==='officer'?'selected':''}>役員</option>
+          <option value="admin"          ${u.status==='admin'?'selected':''}>管理者</option>
+        </select>
+        ${u.status !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id}, '${escHtml(u.name||'未設定')}')">🗑</button>` : ''}
+      </div>`).join('');
+    document.getElementById('section-users').innerHTML =
+      `<div class="section-action-row"><span class="section-title">👥 全ユーザー（${allUsers.length}名）</span></div>${html}`;
+  }
+
+  // ── 地図投稿 ─────────────────────────────────
+  function renderPosts() {
+    const posts = _data.posts;
+    const html = posts.length > 0
+      ? posts.map(p => `
+          <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid #f3f4f6;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(p.title)}</div>
+              <div style="font-size:12px;color:#9ca3af;">${CATEGORY_MAP[p.category]||p.category}　${STATUS_MAP[p.status]||p.status}　👤${escHtml(p.user_name||'不明')}　${formatDate(p.created_at)}</div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="deletePost(${p.id}, '${escHtml(p.title)}')">🗑</button>
+          </div>`).join('')
+      : `<div style="text-align:center;padding:48px 0;color:#9ca3af;">投稿はありません</div>`;
+    document.getElementById('section-posts').innerHTML =
+      `<div class="section-action-row"><span class="section-title">🗺️ 地図投稿（${posts.length}件）</span></div>${html}`;
+  }
+
+  // ── 議題 ─────────────────────────────────────
+  function renderProposals() {
+    const proposals = _data.proposals;
+    const html = proposals.length > 0
+      ? proposals.map(p => `
+          <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid #f3f4f6;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(p.title)}</div>
+              <div style="font-size:12px;color:#9ca3af;">👤${escHtml(p.user_name||'不明')}　${formatDate(p.created_at)}</div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="deleteProposal(${p.id}, '${escHtml(p.title)}')">🗑</button>
+          </div>`).join('')
+      : `<div style="text-align:center;padding:48px 0;color:#9ca3af;">議題はありません</div>`;
+    document.getElementById('section-proposals').innerHTML =
+      `<div class="section-action-row"><span class="section-title">📋 議題（${proposals.length}件）</span></div>${html}`;
+  }
+
+  // ── スケジュール ─────────────────────────────
+  const MONTHS_LABEL = {5:'5月',6:'6月',7:'7月',8:'8月',9:'9月',10:'10月',11:'11月',12:'12月',1:'1月',2:'2月',3:'3月',4:'4月'};
+  const CATS = ['役員会','定例会','行事','清掃','回覧・案内','棚卸・監査','その他'];
+
+  function renderSchedule() {
+    const events = _data.schedule;
+    const html = events.map(e => `
+      <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid #f3f4f6;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:13px;color:#6b7280;">${MONTHS_LABEL[e.month]||e.month+'月'} ${e.date_label}${e.dow?'('+e.dow+')':''} ${e.time_label||''}</div>
+          <div style="font-size:14px;font-weight:700;">${escHtml(e.title)} <span style="font-size:11px;color:#9ca3af;font-weight:400;">${escHtml(e.category||'')}</span></div>
+          ${e.who ? `<div style="font-size:12px;color:#9ca3af;">👥 ${escHtml(e.who)}</div>` : ''}
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="editEvent(${e.id})">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteEvent(${e.id},'${escHtml(e.title)}')">🗑</button>
+      </div>`).join('') || `<div style="text-align:center;padding:48px 0;color:#9ca3af;">予定はありません</div>`;
+    document.getElementById('section-schedule').innerHTML =
+      `<div class="section-action-row">
+        <span class="section-title">📅 スケジュール（${events.length}件）</span>
+        <button class="btn btn-primary btn-sm" onclick="addEvent()">＋ 追加</button>
+      </div>${html}`;
+  }
+
+  // ── Q&A ─────────────────────────────────────
+  function renderQA() {
+    const items = _data.qa;
+    const html = items.map(q => `
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:12px 16px;border-bottom:1px solid #f3f4f6;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:11px;color:#2563eb;font-weight:600;margin-bottom:2px;">${escHtml(q.category||'一般')}</div>
+          <div style="font-size:13px;font-weight:600;">Q. ${escHtml(q.question)}</div>
+          <div style="font-size:12px;color:#6b7280;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">A. ${escHtml(q.answer)}</div>
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          <button class="btn btn-secondary btn-sm" onclick="editQA(${q.id})">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteQA(${q.id},'${escHtml(q.question)}')">🗑</button>
+        </div>
+      </div>`).join('') || `<div style="text-align:center;padding:48px 0;color:#9ca3af;">Q&Aはありません</div>`;
+    document.getElementById('section-qa').innerHTML =
+      `<div class="section-action-row">
+        <span class="section-title">❓ Q&amp;A（${items.length}件）</span>
+        <button class="btn btn-primary btn-sm" onclick="addQA()">＋ 追加</button>
+      </div>${html}`;
+  }
+
+  // ── モーダル共通 ─────────────────────────────
+  function showModal(title, bodyHtml, onSave) {
+    const existing = document.getElementById('admin-modal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'admin-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-height:90vh;overflow-y:auto;padding:20px 16px 40px;">
+        <div style="font-weight:700;font-size:17px;margin-bottom:16px;">${title}</div>
+        ${bodyHtml}
+        <div style="display:flex;gap:8px;margin-top:16px;">
+          <button class="btn btn-secondary btn-block" onclick="document.getElementById('admin-modal').remove()">キャンセル</button>
+          <button class="btn btn-primary btn-block" id="modal-save-btn">保存</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('modal-save-btn').onclick = onSave;
+  }
+
+  // ── スケジュール CRUD ────────────────────────
+  function scheduleForm(e = {}) {
+    return `
+      <div style="display:grid;gap:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;">月 *</label>
+            <select id="sf-month" class="form-select" style="margin-top:2px;">
+              ${[5,6,7,8,9,10,11,12,1,2,3,4].map(m=>`<option value="${m}" ${e.month==m?'selected':''}>${m}月</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;">カテゴリ</label>
+            <select id="sf-cat" class="form-select" style="margin-top:2px;">
+              ${CATS.map(c=>`<option ${e.category===c?'selected':''}>${c}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;">日付 * <span style="font-weight:400;color:#9ca3af;">（例: 2026/05/09 または 5/14〜5/15）</span></label>
+          <input id="sf-date" class="form-input" style="margin-top:2px;" value="${escHtml(e.date_label||'')}">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;">曜日</label>
+            <input id="sf-dow" class="form-input" style="margin-top:2px;" value="${escHtml(e.dow||'')}" placeholder="土">
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;">時間</label>
+            <input id="sf-time" class="form-input" style="margin-top:2px;" value="${escHtml(e.time_label||'')}" placeholder="18:00-19:00">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;">タイトル *</label>
+          <input id="sf-title" class="form-input" style="margin-top:2px;" value="${escHtml(e.title||'')}">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;">出席・担当</label>
+          <input id="sf-who" class="form-input" style="margin-top:2px;" value="${escHtml(e.who||'')}">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;">備考</label>
+          <textarea id="sf-note" class="form-textarea" style="margin-top:2px;">${escHtml(e.note||'')}</textarea>
+        </div>
+      </div>`;
+  }
+
+  function getFormData() {
+    return {
+      month:      parseInt(document.getElementById('sf-month').value),
+      date_label: document.getElementById('sf-date').value.trim(),
+      dow:        document.getElementById('sf-dow').value.trim(),
+      time_label: document.getElementById('sf-time').value.trim(),
+      title:      document.getElementById('sf-title').value.trim(),
+      who:        document.getElementById('sf-who').value.trim(),
+      note:       document.getElementById('sf-note').value.trim(),
+      category:   document.getElementById('sf-cat').value,
+    };
+  }
+
+  function addEvent() {
+    showModal('予定を追加', scheduleForm(), async () => {
+      const body = getFormData();
+      if (!body.title || !body.date_label) { showToast('日付とタイトルは必須です'); return; }
+      const res = await fetch('/api/schedule', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('admin-modal').remove();
+        showToast('追加しました');
+        _data.schedule = await (await fetch('/api/schedule')).json();
+        renderSchedule();
+      } else showToast(data.error);
+    });
+  }
+
+  async function editEvent(id) {
+    const e = _data.schedule.find(ev => ev.id === id);
+    if (!e) return;
+    showModal('予定を編集', scheduleForm(e), async () => {
+      const body = getFormData();
+      if (!body.title || !body.date_label) { showToast('日付とタイトルは必須です'); return; }
+      const r = await fetch(`/api/schedule/${id}`, {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      const data = await r.json();
+      if (data.success) {
+        document.getElementById('admin-modal').remove();
+        showToast('更新しました');
+        _data.schedule = await (await fetch('/api/schedule')).json();
+        renderSchedule();
+      } else showToast(data.error);
+    });
+  }
+
+  async function deleteEvent(id, title) {
+    if (!confirm(`「${title}」を削除しますか？`)) return;
+    const res = await fetch(`/api/schedule/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      _data.schedule = _data.schedule.filter(e => e.id !== id);
+      renderSchedule();
+      showToast('削除しました');
+    } else showToast(data.error);
+  }
+
+  // ── Q&A CRUD ─────────────────────────────────
+  function qaForm(q = {}) {
+    return `
+      <div style="display:grid;gap:8px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;">カテゴリ</label>
+          <select id="qf-cat" class="form-select" style="margin-top:2px;">
+            ${['加入・退会','会費','役員・運営','行事・活動','清掃・ゴミ','防災','回覧板・お知らせ','このアプリについて','一般']
+              .map(c=>`<option ${q.category===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;">質問 *</label>
+          <input id="qf-question" class="form-input" style="margin-top:2px;" value="${escHtml(q.question||'')}">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;">回答 *</label>
+          <textarea id="qf-answer" class="form-textarea" style="margin-top:2px;min-height:80px;">${escHtml(q.answer||'')}</textarea>
+        </div>
+      </div>`;
+  }
+
+  function addQA() {
+    showModal('Q&Aを追加', qaForm(), async () => {
+      const body = {
+        category: document.getElementById('qf-cat').value,
+        question: document.getElementById('qf-question').value.trim(),
+        answer:   document.getElementById('qf-answer').value.trim(),
+      };
+      if (!body.question || !body.answer) { showToast('質問と回答は必須です'); return; }
+      const res = await fetch('/api/qa', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('admin-modal').remove();
+        showToast('追加しました');
+        _data.qa = await (await fetch('/api/qa')).json();
+        renderQA();
+      } else showToast(data.error);
+    });
+  }
+
+  async function editQA(id) {
+    const q = _data.qa.find(i => i.id === id);
+    if (!q) return;
+    showModal('Q&Aを編集', qaForm(q), async () => {
+      const body = {
+        category: document.getElementById('qf-cat').value,
+        question: document.getElementById('qf-question').value.trim(),
+        answer:   document.getElementById('qf-answer').value.trim(),
+      };
+      if (!body.question || !body.answer) { showToast('質問と回答は必須です'); return; }
+      const r = await fetch(`/api/qa/${id}`, {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      const data = await r.json();
+      if (data.success) {
+        document.getElementById('admin-modal').remove();
+        showToast('更新しました');
+        _data.qa = await (await fetch('/api/qa')).json();
+        renderQA();
+      } else showToast(data.error);
+    });
+  }
+
+  async function deleteQA(id, question) {
+    if (!confirm(`「${question}」を削除しますか？`)) return;
+    const res = await fetch(`/api/qa/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      _data.qa = _data.qa.filter(q => q.id !== id);
+      renderQA();
+      showToast('削除しました');
+    } else showToast(data.error);
+  }
+
+  // ── ユーザー操作 ─────────────────────────────
+  async function approve(userId) {
+    const res = await fetch(`/api/admin/approve/${userId}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast('承認しました');
+      _data.pending = _data.pending.filter(u => u.id !== userId);
+      renderPending();
+      const badge = document.getElementById('nav-badge-pending');
+      if (_data.pending.length === 0) badge.style.display = 'none';
+      else badge.textContent = _data.pending.length;
+    } else showToast(data.error);
+  }
+
+  async function reject(userId) {
+    const res = await fetch(`/api/admin/reject/${userId}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast('拒否しました');
+      _data.pending = _data.pending.filter(u => u.id !== userId);
+      renderPending();
+      const badge = document.getElementById('nav-badge-pending');
+      if (_data.pending.length === 0) badge.style.display = 'none';
+      else badge.textContent = _data.pending.length;
+    } else showToast(data.error);
+  }
+
+  async function deleteUser(userId, name) {
+    if (!confirm(`「${name}」を削除しますか？`)) return;
+    const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      _data.users = _data.users.filter(u => u.id !== userId);
+      renderUsers();
+      showToast('削除しました');
+    } else showToast(data.error);
+  }
+
+  async function changeStatus(userId, status) {
+    const res = await fetch(`/api/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    const data = await res.json();
+    if (data.success) showToast('ステータスを変更しました');
+    else showToast(data.error);
+  }
+
+  async function deletePost(id, title) {
+    if (!confirm(`「${title}」を削除しますか？`)) return;
+    const res = await fetch(`/api/admin/posts/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      _data.posts = _data.posts.filter(p => p.id !== id);
+      renderPosts();
+      showToast('削除しました');
+    } else showToast(data.error);
+  }
+
+  async function deleteProposal(id, title) {
+    if (!confirm(`「${title}」を削除しますか？`)) return;
+    const res = await fetch(`/api/admin/proposals/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      _data.proposals = _data.proposals.filter(p => p.id !== id);
+      renderProposals();
+      showToast('削除しました');
+    } else showToast(data.error);
+  }
+
+  init();
+</script>
+</body>
+</html>

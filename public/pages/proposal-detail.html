@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>議題詳細 - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  /* 投票選択肢ボタン */
+  .vote-option {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 14px; border-radius: 10px; cursor: pointer;
+    border: 2px solid #e5e7eb; background: #fff; margin-bottom: 8px;
+    font-size: 14px; font-weight: 600; color: #374151;
+    transition: all .15s; width: 100%; text-align: left;
+  }
+  .vote-option.selected-agree    { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }
+  .vote-option.selected-disagree { border-color: #ef4444; background: #fef2f2; color: #b91c1c; }
+  .vote-option .radio-dot {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid #d1d5db; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .vote-option.selected-agree    .radio-dot { border-color: #2563eb; background: #2563eb; }
+  .vote-option.selected-disagree .radio-dot { border-color: #ef4444; background: #ef4444; }
+  .vote-option .radio-dot::after {
+    content: ''; width: 7px; height: 7px; border-radius: 50%; background: #fff;
+    display: none;
+  }
+  .vote-option.selected-agree .radio-dot::after,
+  .vote-option.selected-disagree .radio-dot::after { display: block; }
+
+  /* 投票送信ボタン */
+  .vote-submit-btn {
+    width: 100%; padding: 13px; border-radius: 12px;
+    font-size: 15px; font-weight: 700; border: none; cursor: pointer;
+    background: #e5e7eb; color: #9ca3af; margin-top: 4px;
+    transition: all .15s;
+  }
+  .vote-submit-btn.ready { background: #2563eb; color: #fff; }
+
+  /* 結果バー */
+  .result-row { margin-bottom: 10px; }
+  .result-label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .result-track { height: 10px; border-radius: 99px; background: #f3f4f6; overflow: hidden; }
+  .result-fill { height: 100%; border-radius: 99px; transition: width .4s; }
+
+  /* 投票理由 */
+  .reason-card { background: #f9fafb; border-radius: 12px; padding: 12px 14px; margin-top: 12px; }
+  .reason-toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+
+  /* 公開理由リスト */
+  .reason-item { padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+  .reason-item:last-child { border-bottom: none; }
+  .reason-voter { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
+  .reason-text { font-size: 13px; color: #374151; line-height: 1.6; }
+  .vote-type-chip {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 1px 8px; border-radius: 99px; margin-left: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/pages/proposals" class="back-btn">←</a>
+  <h1>議題詳細</h1>
+</div>
+
+<div class="page" id="page-body">
+  <div class="loading">読み込み中…</div>
+</div>
+
+<!-- タブバー -->
+<nav class="tab-bar">
+  <a class="tab-item" href="/"><span class="icon">🗺️</span>地図</a>
+  <a class="tab-item active" href="/pages/proposals"><span class="icon">📋</span>議題</a>
+  <a class="tab-item" href="/pages/post"><span class="icon">✏️</span>投稿</a>
+  <a class="tab-item" href="/pages/schedule"><span class="icon">📅</span>予定</a>
+  <a class="tab-item" href="/pages/qa"><span class="icon">❓</span>Q&A</a>
+  <a class="tab-item" href="/pages/mypage"><span class="icon">👤</span>My</a>
+</nav>
+
+<div id="toast" class="toast"></div>
+<script src="/js/common.js"></script>
+<script>
+  const proposalId = new URLSearchParams(location.search).get('id');
+  let _p = null;
+  let _user = null;
+  let _selectedVote = null;
+
+  async function init() {
+    if (!proposalId) { window.location.href = '/pages/proposals'; return; }
+    _user = await fetchCurrentUser();
+    const res = await fetch(`/api/proposals/${proposalId}`);
+    if (!res.ok) { showToast('議題が見つかりません'); return; }
+    _p = await res.json();
+    _selectedVote = _p.myVote;
+    render();
+  }
+
+  function render() {
+    const p = _p;
+    const user = _user;
+    const now = new Date();
+    const isApproved = ['approved','officer','admin'].includes(user.status);
+    const canEdit = user.id === p.user_id || ['officer','admin'].includes(user.status);
+    const canVote = isApproved &&
+      (!p.vote_start || new Date(p.vote_start) <= now) &&
+      (!p.vote_end   || new Date(p.vote_end)   > now);
+
+    // 投票期間表示
+    const votePeriod = p.vote_start || p.vote_end ? `
+      <div style="font-size:12px;color:#6b7280;margin:8px 0;padding:8px 12px;background:#f9fafb;border-radius:8px;">
+        🗓️ 投票期間: ${p.vote_start ? new Date(p.vote_start).toLocaleString('ja-JP') : '開始済み'}
+        〜 ${p.vote_end ? new Date(p.vote_end).toLocaleString('ja-JP') : '無期限'}
+      </div>` : '';
+
+    // ─── 投票セクション ───────────────────────────
+    let voteSection = '';
+
+    if (p.options && p.options.length > 0) {
+      // カスタム選択肢（アンケート形式）
+      const total = p.options.reduce((s, o) => s + (o.vote_count || 0), 0);
+      const optBtns = p.options.map(opt => {
+        const pct = total > 0 ? Math.round(opt.vote_count / total * 100) : 0;
+        const selected = p.myOptionVote === opt.id;
+        return `
+          <button class="vote-option ${selected ? 'selected-agree' : ''}"
+            ${canVote ? `onclick="voteOption(${opt.id})"` : 'disabled'}
+            id="opt-btn-${opt.id}">
+            <div class="radio-dot"></div>
+            <span style="flex:1;">${escHtml(opt.label)}</span>
+            <span style="font-size:13px;color:#6b7280;"><strong id="opt-count-${opt.id}">${opt.vote_count}</strong>票</span>
+          </button>
+          <div class="result-row" style="padding:0 4px;margin-top:-4px;margin-bottom:8px;">
+            <div class="result-track">
+              <div class="result-fill" id="opt-bar-${opt.id}"
+                style="width:${pct}%;background:#2563eb;"></div>
+            </div>
+          </div>`;
+      }).join('');
+      voteSection = `
+        <div style="margin:12px 0;">
+          <div style="font-size:14px;font-weight:700;margin-bottom:10px;">📊 アンケート（合計 ${total}票）</div>
+          ${optBtns}
+          ${!canVote ? `<p style="font-size:12px;color:#9ca3af;margin-top:4px;">${!isApproved?'承認後に投票できます':''}</p>` : ''}
+        </div>`;
+
+    } else {
+      // 賛成/反対 投票
+      const agree = p.agree_count || 0;
+      const disagree = p.disagree_count || 0;
+      const total = agree + disagree;
+      const agreePct    = total > 0 ? Math.round(agree    / total * 100) : 0;
+      const disagreePct = total > 0 ? Math.round(disagree / total * 100) : 0;
+
+      const resultsHtml = `
+        <div style="margin-top:12px;">
+          <div style="font-size:13px;font-weight:700;color:#6b7280;margin-bottom:8px;">集計結果（${total}票）</div>
+          <div class="result-row">
+            <div class="result-label">
+              <span>👍 賛成</span>
+              <span>${agree}票 (${agreePct}%)</span>
+            </div>
+            <div class="result-track">
+              <div class="result-fill" id="bar-agree" style="width:${agreePct}%;background:#2563eb;"></div>
+            </div>
+          </div>
+          <div class="result-row">
+            <div class="result-label">
+              <span>👎 反対</span>
+              <span>${disagree}票 (${disagreePct}%)</span>
+            </div>
+            <div class="result-track">
+              <div class="result-fill" id="bar-disagree" style="width:${disagreePct}%;background:#ef4444;"></div>
+            </div>
+          </div>
+        </div>`;
+
+      if (canVote) {
+        voteSection = `
+          <div style="margin:12px 0;">
+            <div style="font-size:14px;font-weight:700;margin-bottom:10px;">🗳️ 投票する</div>
+            <button class="vote-option ${_selectedVote==='agree'?'selected-agree':''}"
+              onclick="selectVote('agree')" id="vote-btn-agree">
+              <div class="radio-dot"></div>
+              <span>👍 賛成</span>
+            </button>
+            <button class="vote-option ${_selectedVote==='disagree'?'selected-disagree':''}"
+              onclick="selectVote('disagree')" id="vote-btn-disagree">
+              <div class="radio-dot"></div>
+              <span>👎 反対</span>
+            </button>
+
+            <div class="reason-card">
+              <div class="reason-toggle-row">
+                <input type="checkbox" id="anon-check" ${p.myVoteAnon?'checked':''}>
+                <label for="anon-check" style="cursor:pointer;">理由を匿名で公開する</label>
+              </div>
+              <div>
+                <div style="font-size:12px;color:#6b7280;margin-bottom:6px;">投票理由（任意）</div>
+                <textarea id="vote-reason" class="form-textarea" placeholder="理由を入力" style="min-height:70px;">${p.myVoteReason||''}</textarea>
+              </div>
+            </div>
+
+            <button class="vote-submit-btn ${_selectedVote?'ready':''}" id="vote-submit-btn"
+              onclick="submitVote()">
+              ${_selectedVote ? '投票する' : '選択肢を選んでください'}
+            </button>
+            <p style="font-size:11px;color:#9ca3af;text-align:center;margin-top:6px;">
+              再投票すると最新の内容で上書きされます
+            </p>
+            ${resultsHtml}
+          </div>`;
+      } else {
+        voteSection = `<div style="margin:12px 0;">${resultsHtml}
+          ${!isApproved ? '<p style="text-align:center;font-size:12px;color:#9ca3af;margin-top:8px;">承認後に投票できます</p>' : ''}</div>`;
+      }
+    }
+
+    // ─── 投票理由一覧 ─────────────────────────────
+    const reasons = p.voteReasons || [];
+    const reasonsHtml = reasons.length > 0 ? `
+      <div class="card">
+        <div style="font-weight:700;font-size:15px;margin-bottom:8px;">💬 公開中の投票理由</div>
+        ${reasons.map(r => {
+          const chip = r.vote_type === 'agree'
+            ? `<span class="vote-type-chip" style="background:#dbeafe;color:#1d4ed8;">👍 賛成</span>`
+            : `<span class="vote-type-chip" style="background:#fee2e2;color:#b91c1c;">👎 反対</span>`;
+          return `<div class="reason-item">
+            <div class="reason-voter">${escHtml(r.voter_name)}${chip}</div>
+            <div class="reason-text">${escHtml(r.reason)}</div>
+          </div>`;
+        }).join('')}
+      </div>` : '';
+
+    // ─── コメント ─────────────────────────────────
+    const commentsHtml = p.comments.length > 0
+      ? p.comments.map(c => `
+          <div class="comment-item">
+            <div class="comment-user">${escHtml(c.user_name)}</div>
+            <div class="comment-text">${escHtml(c.content)}</div>
+            <div class="comment-time">${formatDate(c.created_at)}</div>
+          </div>`).join('')
+      : '<p style="color:#9ca3af;font-size:14px;padding:12px 0;">コメントはまだありません</p>';
+
+    document.getElementById('page-body').innerHTML = `
+      <div style="padding:16px;">
+        <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;">
+          <h2 style="font-size:20px;font-weight:800;flex:1;margin:0;">${escHtml(p.title)}</h2>
+          ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="editProposal()">✏️ 編集</button>` : ''}
+        </div>
+        <div style="font-size:12px;color:#6b7280;margin-bottom:12px;">
+          👤 ${escHtml(p.user_name||'')}　🕐 ${formatDate(p.created_at)}
+        </div>
+        ${votePeriod}
+        <div style="background:#f9fafb;border-radius:12px;padding:14px;margin-bottom:16px;line-height:1.7;">
+          ${escHtml(p.content || '（内容なし）')}
+        </div>
+
+        <div class="card" style="padding:16px;">
+          ${voteSection}
+        </div>
+
+        ${reasonsHtml}
+
+        <div style="font-weight:700;font-size:16px;margin:16px 0 8px;">
+          💬 コメント（${p.comments.length}件）
+        </div>
+        <div id="comments-list">${commentsHtml}</div>
+        <div class="comment-form" style="margin-top:16px;">
+          <input type="text" id="comment-input" placeholder="コメントを入力…" class="form-input">
+          <button class="btn btn-primary btn-sm" onclick="addComment()">送信</button>
+        </div>
+      </div>`;
+  }
+
+  function selectVote(type) {
+    _selectedVote = type;
+    const btnAgree    = document.getElementById('vote-btn-agree');
+    const btnDisagree = document.getElementById('vote-btn-disagree');
+    const submitBtn   = document.getElementById('vote-submit-btn');
+    if (btnAgree)    { btnAgree.className    = `vote-option ${type==='agree'?'selected-agree':''}`; }
+    if (btnDisagree) { btnDisagree.className = `vote-option ${type==='disagree'?'selected-disagree':''}`; }
+    if (submitBtn)   { submitBtn.className = 'vote-submit-btn ready'; submitBtn.textContent = '投票する'; }
+  }
+
+  async function submitVote() {
+    if (!_selectedVote) return;
+    const reason = document.getElementById('vote-reason')?.value.trim() || '';
+    const is_anonymous = document.getElementById('anon-check')?.checked ? 1 : 0;
+
+    const res = await fetch(`/api/proposals/${proposalId}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vote_type: _selectedVote, reason, is_anonymous })
+    });
+    const data = await res.json();
+    if (data.success) {
+      _p.agree_count    = data.agree;
+      _p.disagree_count = data.disagree;
+      _p.voteReasons    = data.voteReasons;
+      _p.myVote = _selectedVote;
+
+      // バーをリアルタイム更新
+      const total = data.agree + data.disagree;
+      const ap = total > 0 ? Math.round(data.agree    / total * 100) : 0;
+      const dp = total > 0 ? Math.round(data.disagree / total * 100) : 0;
+      const ba = document.getElementById('bar-agree');
+      const bd = document.getElementById('bar-disagree');
+      if (ba) ba.style.width = ap + '%';
+      if (bd) bd.style.width = dp + '%';
+      // 結果ラベル更新
+      document.querySelectorAll('.result-label').forEach((el, i) => {
+        if (i === 0) el.querySelectorAll('span')[1].textContent = `${data.agree}票 (${ap}%)`;
+        if (i === 1) el.querySelectorAll('span')[1].textContent = `${data.disagree}票 (${dp}%)`;
+      });
+      showToast('投票しました！ +2pt');
+
+      // 理由リスト更新
+      if (data.voteReasons !== undefined) {
+        _p.voteReasons = data.voteReasons;
+        // ページ再描画せず理由カードだけ更新したい場合は init() で対応
+      }
+    } else {
+      showToast(data.error);
+    }
+  }
+
+  async function voteOption(optionId) {
+    const res = await fetch(`/api/proposals/${proposalId}/option-vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ option_id: optionId })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const total = data.options.reduce((s, o) => s + o.vote_count, 0);
+      data.options.forEach(opt => {
+        const pct = total > 0 ? Math.round(opt.vote_count / total * 100) : 0;
+        const cnt = document.getElementById(`opt-count-${opt.id}`);
+        const bar = document.getElementById(`opt-bar-${opt.id}`);
+        const btn = document.getElementById(`opt-btn-${opt.id}`);
+        if (cnt) cnt.textContent = opt.vote_count;
+        if (bar) bar.style.width = pct + '%';
+        if (btn) {
+          const selected = data.myOptionVote === opt.id;
+          btn.className = `vote-option ${selected ? 'selected-agree' : ''}`;
+        }
+      });
+      showToast(data.myOptionVote ? '投票しました！ +1pt' : '投票を取り消しました');
+    } else {
+      showToast(data.error);
+    }
+  }
+
+  async function editProposal() {
+    const res = await fetch(`/api/proposals/${proposalId}`);
+    const p = await res.json();
+    const modal = document.createElement('div');
+    modal.id = 'edit-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-height:90vh;overflow-y:auto;padding:20px 16px 40px;">
+        <div style="font-weight:700;font-size:17px;margin-bottom:16px;">✏️ 議題を編集</div>
+        <div class="form-group">
+          <label class="form-label">タイトル</label>
+          <input id="ep-title" class="form-input" value="${escHtml(p.title)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">内容</label>
+          <textarea id="ep-content" class="form-textarea">${escHtml(p.content || '')}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">投票開始日時</label>
+          <input type="datetime-local" id="ep-start" class="form-input" value="${p.vote_start ? p.vote_start.replace(' ','T').slice(0,16) : ''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">投票終了日時</label>
+          <input type="datetime-local" id="ep-end" class="form-input" value="${p.vote_end ? p.vote_end.replace(' ','T').slice(0,16) : ''}">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-secondary btn-block" onclick="document.getElementById('edit-modal').remove()">キャンセル</button>
+          <button class="btn btn-primary btn-block" onclick="saveProposal()">保存</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  async function saveProposal() {
+    const body = {
+      title:      document.getElementById('ep-title').value.trim(),
+      content:    document.getElementById('ep-content').value,
+      vote_start: document.getElementById('ep-start').value || null,
+      vote_end:   document.getElementById('ep-end').value   || null,
+    };
+    if (!body.title) { showToast('タイトルを入力してください'); return; }
+    const res = await fetch(`/api/proposals/${proposalId}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('edit-modal').remove();
+      showToast('更新しました');
+      init();
+    } else {
+      showToast(data.error);
+    }
+  }
+
+  async function addComment() {
+    const inp = document.getElementById('comment-input');
+    const content = inp.value.trim();
+    if (!content) return;
+    const res = await fetch(`/api/proposals/${proposalId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content })
+    });
+    const data = await res.json();
+    if (data.success) {
+      inp.value = '';
+      showToast('コメントしました！ +2pt');
+      init();
+    } else {
+      showToast(data.error);
+    }
+  }
+
+  function escHtml(str) {
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  init();
+</script>
+</body>
+</html>

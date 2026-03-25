@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ログイン - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  .step-box {
+    background: #f0f9ff; border: 1.5px solid #bae6fd;
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;
+    font-size: 14px; line-height: 1.8; color: #0369a1;
+  }
+  .step-box strong { color: #0c4a6e; }
+</style>
+</head>
+<body>
+
+<div class="login-wrap">
+  <div class="login-logo">🏘️</div>
+  <h1 class="login-title">自治会DAO</h1>
+  <p class="login-sub">地域の問題を一緒に解決しよう</p>
+
+  <div id="login-content" style="width:100%;max-width:360px;display:none;">
+
+    <!-- 使い方説明 -->
+    <div class="step-box">
+      <strong>📋 はじめての方へ</strong><br>
+      ① お名前を入力してログイン<br>
+      ② 住所・電話番号を登録して申請<br>
+      ③ 管理者が承認したら正会員に！
+    </div>
+
+    <!-- LINEログインボタン -->
+    <div class="card" style="margin:0 0 16px;">
+      <a href="/api/auth/line" class="btn btn-primary btn-block" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 5.92 2 10.72c0 3.24 2.04 6.08 5.12 7.68-.22.8-.8 2.9-.92 3.36-.16.56.2.56.44.4.18-.12 2.88-1.96 4.04-2.76.42.06.86.08 1.32.08 5.52 0 10-3.92 10-8.76S17.52 2 12 2z"/></svg>
+        LINEでログイン
+      </a>
+    </div>
+
+    <!-- 管理者ログイン（折りたたみ） -->
+    <details style="margin-top:8px;">
+      <summary style="font-size:12px;color:#9ca3af;cursor:pointer;text-align:center;">
+        管理者・テスト用ログイン
+      </summary>
+      <div class="card" style="margin-top:8px;">
+        <div class="form-group">
+          <label class="form-label">LINE ID（テスト用）</label>
+          <input type="text" id="line_id" class="form-input" placeholder="admin_line_id">
+        </div>
+        <button class="btn btn-secondary btn-block btn-sm" onclick="loginWithId()">
+          IDでログイン
+        </button>
+      </div>
+    </details>
+
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="/js/common.js"></script>
+<script>
+  // ログイン済みならトップへ、未ログインならフォームを表示
+  fetch('/api/auth/me').then(r => r.json()).then(d => {
+    if (d.loggedIn) {
+      window.location.href = '/';
+    } else {
+      document.getElementById('login-content').style.display = 'block';
+    }
+  });
+
+  // 通常ログイン（名前から自動でIDを生成）
+  async function login() {
+    const display_name = document.getElementById('display_name').value.trim();
+    if (!display_name) { showToast('お名前を入力してください'); return; }
+
+    // 名前からユニークなIDを生成（本番ではLINEのIDが入る）
+    const line_id = 'user_' + display_name.replace(/\s/g, '') + '_' + Date.now();
+
+    await doLogin(line_id, display_name);
+  }
+
+  // テスト用：IDを直接指定してログイン
+  async function loginWithId() {
+    const line_id = document.getElementById('line_id').value.trim();
+    if (!line_id) { showToast('LINE IDを入力してください'); return; }
+    await doLogin(line_id, '');
+  }
+
+  async function doLogin(line_id, display_name) {
+    const res = await fetch('/api/auth/line-mock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ line_id, display_name })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      // ログイン後はまず地図へ（申請はバナーから促す）
+      window.location.href = '/';
+    } else {
+      showToast(data.error || 'ログイン失敗');
+    }
+  }
+</script>
+</body>
+</html>
