@@ -58,7 +58,7 @@ router.get('/line', (req, res) => {
   // Android Chrome対策: stateをDBにも保存（セッションが失われた場合のフォールバック）
   try {
     const db = getDB();
-    db.prepare('DELETE FROM oauth_states WHERE created_at < datetime("now", "-10 minutes")').run();
+    db.prepare("DELETE FROM oauth_states WHERE created_at < datetime('now', '-10 minutes')").run();
     db.prepare('INSERT OR REPLACE INTO oauth_states (state, callback_url) VALUES (?, ?)').run(state, callbackUrl);
   } catch(e) { console.error('oauth_states insert error:', e.message); }
 
