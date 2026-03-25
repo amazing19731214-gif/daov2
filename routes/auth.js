@@ -3,6 +3,9 @@ const router = express.Router();
 const { getDB } = require('../db/database');
 const https = require('https');
 
+// Android Chrome対策: stateをメモリに保存（DBより確実）
+const oauthStates = new Map(); // state -> { callbackUrl, ts }
+
 // LINE OAuth設定
 const LINE_CHANNEL_ID = process.env.LINE_CHANNEL_ID;
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET;
@@ -60,12 +63,12 @@ router.get('/line', (req, res) => {
   console.log(`[LINE auth] host=${host} protocol=${protocol} callbackUrl=${callbackUrl}`);
   req.session.lineCallbackUrl = callbackUrl;
 
-  // Android Chrome対策: stateをDBにも保存（セッションが失われた場合のフォールバック）
-  try {
-    const db = getDB();
-    db.prepare("DELETE FROM oauth_states WHERE created_at < datetime('now', '-10 minutes')").run();
-    db.prepare('INSERT OR REPLACE INTO oauth_states (state, callback_url) VALUES (?, ?)').run(state, callbackUrl);
-  } catch(e) { console.error('oauth_states insert error:', e.message); }
+  // Android Chrome対策: stateをメモリに保存（セッションが失われた場合のフォールバック）
+  oauthStates.set(state, { callbackUrl, ts: Date.now() });
+  // 10分以上古いstateを削除
+  for (const [k, v] of oauthStates) {
+    if (Date.now() - v.ts > 600000) oauthStates.delete(k);
+  }
 
   // AndroidのChromeではLINEアプリが横取りしてエラーになるためdisable_auto_loginを追加
   const ua = req.headers['user-agent'] || '';
@@ -94,13 +97,13 @@ router.get('/line/callback', async (req, res) => {
     let callbackUrl;
     if (state === req.session.lineState) {
       callbackUrl = req.session.lineCallbackUrl || LINE_CALLBACK_URL;
+    } else if (oauthStates.has(state)) {
+      // Android Chrome対策: メモリから検索
+      const saved = oauthStates.get(state);
+      oauthStates.delete(state);
+      callbackUrl = saved.callbackUrl;
     } else {
-      // Android Chrome対策: DBから検索
-      const db = getDB();
-      const saved = db.prepare('SELECT * FROM oauth_states WHERE state = ?').get(state);
-      if (!saved) return res.redirect('/pages/login?error=invalid_state');
-      callbackUrl = saved.callback_url;
-      db.prepare('DELETE FROM oauth_states WHERE state = ?').run(state);
+      return res.redirect('/pages/login?error=invalid_state');
     }
     const tokenRes = await httpsPost('https://api.line.me/oauth2/v2.1/token', {
       grant_type: 'authorization_code',
