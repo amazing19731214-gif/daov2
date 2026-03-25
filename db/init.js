@@ -351,6 +351,15 @@ function initDB() {
     )
   `);
 
+  // OAuth stateテーブル（Android Chrome対策）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS oauth_states (
+      state TEXT PRIMARY KEY,
+      callback_url TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // お知らせ（回覧）テーブル
   db.exec(`
     CREATE TABLE IF NOT EXISTS notices (

@@ -54,6 +54,14 @@ router.get('/line', (req, res) => {
     ? (process.env.LINE_CALLBACK_URL_LOCAL || LINE_CALLBACK_URL)
     : LINE_CALLBACK_URL;
   req.session.lineCallbackUrl = callbackUrl;
+
+  // Android Chrome対策: stateをDBにも保存（セッションが失われた場合のフォールバック）
+  try {
+    const db = getDB();
+    db.prepare('DELETE FROM oauth_states WHERE created_at < datetime("now", "-10 minutes")').run();
+    db.prepare('INSERT OR REPLACE INTO oauth_states (state, callback_url) VALUES (?, ?)').run(state, callbackUrl);
+  } catch(e) { console.error('oauth_states insert error:', e.message); }
+
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: LINE_CHANNEL_ID,
@@ -70,10 +78,19 @@ router.get('/line/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
     if (!code) return res.redirect('/pages/login?error=no_code');
-    if (state !== req.session.lineState) return res.redirect('/pages/login?error=invalid_state');
 
-    // アクセストークン取得
-    const callbackUrl = req.session.lineCallbackUrl || LINE_CALLBACK_URL;
+    // stateの検証（セッション優先、なければDBで確認）
+    let callbackUrl;
+    if (state === req.session.lineState) {
+      callbackUrl = req.session.lineCallbackUrl || LINE_CALLBACK_URL;
+    } else {
+      // Android Chrome対策: DBから検索
+      const db = getDB();
+      const saved = db.prepare('SELECT * FROM oauth_states WHERE state = ?').get(state);
+      if (!saved) return res.redirect('/pages/login?error=invalid_state');
+      callbackUrl = saved.callback_url;
+      db.prepare('DELETE FROM oauth_states WHERE state = ?').run(state);
+    }
     const tokenRes = await httpsPost('https://api.line.me/oauth2/v2.1/token', {
       grant_type: 'authorization_code',
       code,
