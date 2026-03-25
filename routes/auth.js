@@ -70,13 +70,19 @@ router.get('/line', (req, res) => {
     if (Date.now() - v.ts > 600000) oauthStates.delete(k);
   }
 
+  const ua = req.headers['user-agent'] || '';
+  const isAndroid = /android/i.test(ua);
+  const nonce = Math.random().toString(36).substring(2);
+
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: LINE_CHANNEL_ID,
     redirect_uri: callbackUrl,
     state,
-    scope: 'profile'
+    scope: 'profile openid',
+    nonce
   });
+  if (isAndroid) params.set('disable_auto_login', 'true');
 
   const lineUrl = `https://access.line.me/oauth2/v2.1/authorize?${params}`;
   res.redirect(lineUrl);
