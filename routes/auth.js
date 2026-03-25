@@ -82,7 +82,7 @@ router.get('/line', (req, res) => {
     scope: 'profile openid',
     nonce
   });
-  if (isAndroid) params.set('disable_auto_login', 'true');
+  if (isAndroid) params.set('prompt', 'consent');
 
   const lineUrl = `https://access.line.me/oauth2/v2.1/authorize?${params}`;
   res.redirect(lineUrl);
