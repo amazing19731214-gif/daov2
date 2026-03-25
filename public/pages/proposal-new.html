@@ -56,8 +56,8 @@
 <script>
   async function init() {
     const user = await fetchCurrentUser();
-    if (!['approved','officer','admin'].includes(user.status)) {
-      showToast('承認済みメンバーのみ議題を作成できます');
+    if (!['officer','admin'].includes(user.status)) {
+      showToast('役員・管理者のみ議題を作成できます');
       setTimeout(() => window.location.href = '/pages/proposals', 2000);
     }
   }

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { getDB } = require('../db/database');
-const { requireLogin, requireApproved } = require('../middleware/auth');
+const { requireLogin, requireApproved, requireOfficer } = require('../middleware/auth');
 const { addPoints } = require('./points');
 
 // 議題一覧
@@ -91,7 +91,7 @@ router.get('/:id', (req, res) => {
 });
 
 // 議題作成（承認済み以上）
-router.post('/', requireApproved, (req, res) => {
+router.post('/', requireOfficer, (req, res) => {
   const { title, content, vote_start, vote_end, options } = req.body;
   if (!title) return res.status(400).json({ error: 'タイトルは必須です' });
 
