@@ -39,6 +39,7 @@ router.post('/login', (req, res) => {
 
 // 本登録申請（名前・パスワード・住所・電話番号）
 router.post('/register', (req, res) => {
+  console.log('[register] session:', JSON.stringify(req.session));
   if (!req.session.userId) return res.status(401).json({ error: 'ログインが必要です' });
 
   const { name, password, address, phone } = req.body;
