@@ -17,6 +17,9 @@ const noticeRoutes    = require('./routes/notices');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Railwayのリバースプロキシを信頼（HTTPS・ホスト名を正しく取得）
+app.set('trust proxy', 1);
+
 // ── ミドルウェア ──────────────────────────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

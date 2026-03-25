@@ -48,11 +48,16 @@ function httpsGet(url, headers) {
 router.get('/line', (req, res) => {
   const state = Math.random().toString(36).substring(2);
   req.session.lineState = state;
-  // アクセス元のホストに合わせてコールバックURLを決定
+
+  // callbackURL: 環境変数優先、なければリクエストから動的生成
   const host = req.hostname;
+  const protocol = req.protocol; // trust proxy=1 により https が返る
+  const dynamicCallbackUrl = `${protocol}://${host}/api/auth/line/callback`;
   const callbackUrl = host === 'localhost'
-    ? (process.env.LINE_CALLBACK_URL_LOCAL || LINE_CALLBACK_URL)
-    : LINE_CALLBACK_URL;
+    ? (process.env.LINE_CALLBACK_URL_LOCAL || LINE_CALLBACK_URL || dynamicCallbackUrl)
+    : (LINE_CALLBACK_URL || dynamicCallbackUrl);
+
+  console.log(`[LINE auth] host=${host} protocol=${protocol} callbackUrl=${callbackUrl}`);
   req.session.lineCallbackUrl = callbackUrl;
 
   // Android Chrome対策: stateをDBにも保存（セッションが失われた場合のフォールバック）
