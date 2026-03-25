@@ -351,6 +351,45 @@ function initDB() {
     )
   `);
 
+  // お知らせ（回覧）テーブル
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT DEFAULT '',
+      category TEXT DEFAULT '一般',
+      priority TEXT DEFAULT 'normal',
+      author_id INTEGER,
+      total_count INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (author_id) REFERENCES users(id)
+    )
+  `);
+
+  // お知らせ既読テーブル
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notice_reads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      notice_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(notice_id, user_id),
+      FOREIGN KEY (notice_id) REFERENCES notices(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  // お知らせ初期ダミーデータ
+  const noticeExists = db.prepare('SELECT id FROM notices LIMIT 1').get();
+  if (!noticeExists) {
+    const ins = db.prepare(`INSERT INTO notices (title, content, category, priority, total_count, created_at) VALUES (?,?,?,?,?,?)`);
+    ins.run('暴走行為について注意', '深夜に住宅街で暴走行為が確認されています。不審な車両を見かけた場合は警察に通報してください。', '注意喚起', 'emergency', 54, '2026-03-24 10:00:00');
+    ins.run('防犯灯工事のお知らせ', '〇〇丁目の防犯灯が老朽化のため、3月28日（土）に工事を実施します。工事中は通行に注意してください。', '工事', 'normal', 54, '2026-03-25 09:00:00');
+    ins.run('一斉清掃のお知らせ', '4月5日（日）8:00より地区一斉清掃を実施します。各班長の指示に従い、ご参加よろしくお願いします。', 'イベント', 'normal', 54, '2026-03-20 08:00:00');
+    ins.run('定期総会のご案内', '4月17日（土）19:00より自治会館にて定期総会を開催します。会員の皆様のご参加をお願いします。', 'お知らせ', 'normal', 54, '2026-03-15 09:00:00');
+    console.log('✅ お知らせ初期データ投入完了');
+  }
+
   // 初期管理者アカウント（存在しない場合のみ作成）
   const adminExists = db.prepare("SELECT id FROM users WHERE status = 'admin' LIMIT 1").get();
   if (!adminExists) {
