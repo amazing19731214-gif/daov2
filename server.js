@@ -64,7 +64,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'dao-v2-secret',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, secure: false } // 7日間
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, secure: false, sameSite: 'lax' } // 7日間
 }));
 
 // ── リクエストログ ────────────────────────────
