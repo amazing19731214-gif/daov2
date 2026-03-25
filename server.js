@@ -3,7 +3,6 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const { initDB } = require('./db/init');
-const FileStore = require('session-file-store')(session);
 
 const authRoutes      = require('./routes/auth');
 const mapRoutes       = require('./routes/map');
@@ -25,13 +24,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// セッション設定（本番環境では connect-sqlite3 等に変更推奨）
+// セッション設定（メモリストア：Railway単一インスタンス向け）
 app.use(session({
-  store: new FileStore({ path: './sessions', ttl: 7 * 24 * 60 * 60, retries: 1 }),
   secret: process.env.SESSION_SECRET || 'dao-v2-secret',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 } // 7日間
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000, secure: false } // 7日間
 }));
 
 // ── リクエストログ ────────────────────────────

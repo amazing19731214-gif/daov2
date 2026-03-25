@@ -84,7 +84,7 @@ router.get('/line', (req, res) => {
   if (isAndroid) params.set('disable_auto_login', 'true');
 
   const lineUrl = `https://access.line.me/oauth2/v2.1/authorize?${params}`;
-  req.session.save(() => res.redirect(lineUrl));
+  res.redirect(lineUrl);
 });
 
 // LINEログインコールバック
@@ -141,7 +141,7 @@ router.get('/line/callback', async (req, res) => {
     const appBase = LINE_CALLBACK_URL
       ? LINE_CALLBACK_URL.split('/api/')[0]
       : '';
-    req.session.save(() => res.redirect(appBase + '/'));
+    res.redirect(appBase + '/');
   } catch (e) {
     console.error('LINE callback error:', e);
     res.redirect('/pages/login?error=callback_failed');
