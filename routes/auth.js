@@ -129,7 +129,11 @@ router.get('/line/callback', async (req, res) => {
     req.session.userStatus = user.status;
     req.session.userName = user.name;
 
-    res.redirect('/');
+    // Railwayのプロキシ環境での絶対URLリダイレクト（Android Chrome対策）
+    const appBase = LINE_CALLBACK_URL
+      ? LINE_CALLBACK_URL.split('/api/')[0]
+      : '';
+    req.session.save(() => res.redirect(appBase + '/'));
   } catch (e) {
     console.error('LINE callback error:', e);
     res.redirect('/pages/login?error=callback_failed');
