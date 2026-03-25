@@ -10,20 +10,25 @@ class SQLiteStore extends session.Store {
   get(sid, cb) {
     try {
       const row = getDB().prepare('SELECT data, expires FROM sessions WHERE sid=?').get(sid);
-      if (!row) return cb(null, null);
+      if (!row) { console.log('[session] get: not found', sid); return cb(null, null); }
       if (Date.now() > row.expires) {
         getDB().prepare('DELETE FROM sessions WHERE sid=?').run(sid);
+        console.log('[session] get: expired', sid);
         return cb(null, null);
       }
-      cb(null, JSON.parse(row.data));
-    } catch(e) { cb(e); }
+      const parsed = JSON.parse(row.data);
+      console.log('[session] get: found userId=', parsed.userId);
+      cb(null, parsed);
+    } catch(e) { console.error('[session] get error:', e); cb(e); }
   }
   set(sid, session, cb) {
     try {
       const expires = Date.now() + (session.cookie?.maxAge || 7*24*60*60*1000);
-      getDB().prepare('INSERT OR REPLACE INTO sessions (sid,data,expires) VALUES (?,?,?)').run(sid, JSON.stringify(session), expires);
+      const data = JSON.stringify(session);
+      getDB().prepare('INSERT OR REPLACE INTO sessions (sid,data,expires) VALUES (?,?,?)').run(sid, data, expires);
+      console.log('[session] set: saved userId=', session.userId, 'sid=', sid);
       cb(null);
-    } catch(e) { cb(e); }
+    } catch(e) { console.error('[session] set error:', e); cb(e); }
   }
   destroy(sid, cb) {
     try {
