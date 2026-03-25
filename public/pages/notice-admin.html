@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>お知らせ管理 - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+  <a href="/pages/admin" class="back-btn">←</a>
+  <h1>お知らせ管理</h1>
+</div>
+
+<div class="page" style="padding-top:16px;">
+
+  <!-- 新規作成フォーム -->
+  <div class="card" id="form-card">
+    <h3 id="form-title" style="font-size:15px;font-weight:700;margin-bottom:12px;">新規作成</h3>
+    <input type="hidden" id="edit-id">
+
+    <div class="form-group">
+      <label class="form-label">タイトル <span style="color:#ef4444;">*</span></label>
+      <input type="text" id="f-title" class="form-input" placeholder="お知らせのタイトル">
+    </div>
+    <div class="form-group">
+      <label class="form-label">内容</label>
+      <textarea id="f-content" class="form-textarea" placeholder="詳細内容を入力…" rows="4"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <div style="flex:1;">
+        <label class="form-label">カテゴリ</label>
+        <select id="f-category" class="form-input">
+          <option>一般</option>
+          <option>お知らせ</option>
+          <option>注意喚起</option>
+          <option>イベント</option>
+          <option>工事</option>
+          <option>防災</option>
+        </select>
+      </div>
+      <div style="flex:1;">
+        <label class="form-label">優先度</label>
+        <select id="f-priority" class="form-input">
+          <option value="normal">通常</option>
+          <option value="urgent">急ぎ</option>
+          <option value="emergency">緊急</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">対象世帯数（任意）</label>
+      <input type="number" id="f-total" class="form-input" placeholder="54">
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary" style="flex:1;" onclick="saveNotice()">保存</button>
+      <button class="btn btn-secondary" id="cancel-btn" style="display:none;" onclick="resetForm()">キャンセル</button>
+    </div>
+  </div>
+
+  <!-- お知らせ一覧 -->
+  <div id="notice-list" style="margin-top:8px;"></div>
+
+</div>
+
+<!-- タブバー -->
+<nav class="tab-bar">
+  <a class="tab-item" href="/"><span class="icon">🏠</span>お知らせ</a>
+  <a class="tab-item" href="/pages/map"><span class="icon">🗺️</span>地図</a>
+  <a class="tab-item" href="/pages/proposals"><span class="icon">📋</span>議題</a>
+  <a class="tab-item" href="/pages/post"><span class="icon">✏️</span>投稿</a>
+  <a class="tab-item" href="/pages/schedule"><span class="icon">📅</span>予定</a>
+  <a class="tab-item" href="/pages/mypage"><span class="icon">👤</span>My</a>
+</nav>
+
+<div id="toast" class="toast"></div>
+<script src="/js/common.js"></script>
+<script>
+  const PRIORITIES = { normal: '通常', urgent: '急ぎ', emergency: '🚨緊急' };
+  const PRIORITY_COLOR = { normal: '#6b7280', urgent: '#f59e0b', emergency: '#ef4444' };
+
+  async function init() {
+    const user = await fetchCurrentUser();
+    if (!['admin','officer'].includes(user.status)) {
+      showToast('権限がありません');
+      setTimeout(() => window.location.href = '/', 1500);
+      return;
+    }
+    loadList();
+  }
+
+  async function loadList() {
+    const res = await fetch('/api/notices');
+    const list = await res.json();
+    const el = document.getElementById('notice-list');
+
+    if (list.length === 0) {
+      el.innerHTML = '<p style="text-align:center;color:#9ca3af;padding:24px;">お知らせがありません</p>';
+      return;
+    }
+
+    el.innerHTML = list.map(n => `
+      <div class="card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+          <div style="flex:1;">
+            <span style="font-size:11px;color:${PRIORITY_COLOR[n.priority]||'#6b7280'};font-weight:700;">${PRIORITIES[n.priority]||n.priority}</span>
+            <span style="font-size:11px;color:#9ca3af;margin-left:6px;">[${n.category}]</span>
+            <div style="font-weight:700;margin-top:2px;">${escHtml(n.title)}</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:4px;">
+              既読 ${n.read_count}/${n.total_count||'?'} ・ ${formatDate(n.created_at)}
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button class="btn btn-secondary btn-sm" onclick="editNotice(${n.id})">編集</button>
+            <button class="btn btn-sm" style="background:#fee2e2;color:#ef4444;" onclick="deleteNotice(${n.id}, '${escHtml(n.title)}')">削除</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function saveNotice() {
+    const title = document.getElementById('f-title').value.trim();
+    if (!title) { showToast('タイトルを入力してください'); return; }
+
+    const body = {
+      title,
+      content:     document.getElementById('f-content').value,
+      category:    document.getElementById('f-category').value,
+      priority:    document.getElementById('f-priority').value,
+      total_count: parseInt(document.getElementById('f-total').value) || 0
+    };
+
+    const editId = document.getElementById('edit-id').value;
+    const url    = editId ? `/api/notices/${editId}` : '/api/notices';
+    const method = editId ? 'PUT' : 'POST';
+
+    const res  = await fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast(editId ? '更新しました' : '作成しました');
+      resetForm();
+      loadList();
+    } else {
+      showToast(data.error || '保存失敗');
+    }
+  }
+
+  async function editNotice(id) {
+    const res    = await fetch(`/api/notices/${id}`);
+    const notice = await res.json();
+
+    document.getElementById('edit-id').value         = id;
+    document.getElementById('f-title').value         = notice.title;
+    document.getElementById('f-content').value       = notice.content || '';
+    document.getElementById('f-category').value      = notice.category || '一般';
+    document.getElementById('f-priority').value      = notice.priority || 'normal';
+    document.getElementById('f-total').value         = notice.total_count || '';
+    document.getElementById('form-title').textContent = '編集中';
+    document.getElementById('cancel-btn').style.display = 'inline-block';
+
+    document.getElementById('form-card').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  async function deleteNotice(id, title) {
+    if (!confirm(`「${title}」を削除しますか？`)) return;
+    const res  = await fetch(`/api/notices/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) { showToast('削除しました'); loadList(); }
+    else showToast(data.error || '削除失敗');
+  }
+
+  function resetForm() {
+    document.getElementById('edit-id').value          = '';
+    document.getElementById('f-title').value          = '';
+    document.getElementById('f-content').value        = '';
+    document.getElementById('f-category').value       = '一般';
+    document.getElementById('f-priority').value       = 'normal';
+    document.getElementById('f-total').value          = '';
+    document.getElementById('form-title').textContent = '新規作成';
+    document.getElementById('cancel-btn').style.display = 'none';
+  }
+
+  function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  init();
+</script>
+</body>
+</html>
