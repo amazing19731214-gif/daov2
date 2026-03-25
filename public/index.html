@@ -105,6 +105,12 @@
   <a id="banner-btn" href="/pages/register" class="btn btn-sm" style="background:#f59e0b;color:#fff;white-space:nowrap;min-height:32px;padding:4px 12px;">申請する</a>
 </div>
 
+<!-- 天気ウィジェット -->
+<div id="weather-widget" style="display:none;margin:10px 16px 0;background:#fff;border-radius:12px;padding:12px 16px;box-shadow:0 1px 4px rgba(0,0,0,.07);border:1px solid #f0f0f0;">
+  <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;">📍 松かげ台周辺の天気</div>
+  <div id="weather-days" style="display:flex;gap:8px;"></div>
+</div>
+
 <!-- メインコンテンツ -->
 <div class="page" style="padding:12px 16px 0;" id="notice-container">
   <div class="loading">読み込み中…</div>
@@ -170,6 +176,56 @@
     }
 
     await loadNotices();
+    loadWeather();
+  }
+
+  // WMOコード → 絵文字・説明
+  function weatherIcon(code) {
+    if (code === 0)                return ['☀️', '快晴'];
+    if (code <= 2)                 return ['🌤️', '晴れ'];
+    if (code === 3)                return ['☁️', '曇り'];
+    if (code <= 48)                return ['🌫️', '霧'];
+    if (code <= 55)                return ['🌦️', '霧雨'];
+    if (code <= 65)                return ['🌧️', '雨'];
+    if (code <= 75)                return ['🌨️', '雪'];
+    if (code <= 82)                return ['🌦️', 'にわか雨'];
+    if (code <= 86)                return ['🌨️', 'にわか雪'];
+    if (code <= 99)                return ['⛈️', '雷雨'];
+    return ['🌡️', ''];
+  }
+
+  async function loadWeather() {
+    try {
+      // 松かげ台（厚木市）周辺の座標
+      const lat = 35.44, lng = 139.37;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo&forecast_days=3`;
+      const res  = await fetch(url);
+      const data = await res.json();
+      const { time, weather_code, temperature_2m_max, temperature_2m_min } = data.daily;
+
+      const days = ['今日', '明日', '明後日'];
+      const html = time.map((t, i) => {
+        const [icon, label] = weatherIcon(weather_code[i]);
+        const max = Math.round(temperature_2m_max[i]);
+        const min = Math.round(temperature_2m_min[i]);
+        const dow = ['日','月','火','水','木','金','土'][new Date(t).getDay()];
+        return `
+          <div style="flex:1;text-align:center;padding:6px 4px;background:#f9fafb;border-radius:8px;">
+            <div style="font-size:11px;font-weight:600;color:#6b7280;">${days[i]}<span style="color:#9ca3af;">（${dow}）</span></div>
+            <div style="font-size:28px;line-height:1.3;">${icon}</div>
+            <div style="font-size:11px;color:#6b7280;">${label}</div>
+            <div style="font-size:13px;font-weight:700;margin-top:2px;">
+              <span style="color:#dc2626;">${max}°</span>
+              <span style="color:#3b82f6;margin-left:4px;">${min}°</span>
+            </div>
+          </div>`;
+      }).join('');
+
+      document.getElementById('weather-days').innerHTML = html;
+      document.getElementById('weather-widget').style.display = 'block';
+    } catch(e) {
+      // 天気取得失敗は無視
+    }
   }
 
   async function loadNotices() {
