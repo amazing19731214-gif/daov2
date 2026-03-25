@@ -1,141 +1,174 @@
 const express = require('express');
 const router = express.Router();
-const { getDB } = require('../db/database');
+const { pool } = require('../db/database');
 const { requireAdmin } = require('../middleware/auth');
 
 // 承認待ちユーザー一覧
-router.get('/pending', requireAdmin, (req, res) => {
-  const db = getDB();
-  const users = db.prepare(`
-    SELECT u.id, u.name, u.address, u.phone, u.created_at, rr.submitted_at
-    FROM users u
-    LEFT JOIN registration_requests rr ON u.id = rr.user_id
-    WHERE u.status = 'pending_review'
-    ORDER BY rr.submitted_at ASC
-  `).all();
-  res.json(users);
+router.get('/pending', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.address, u.phone, u.created_at, rr.submitted_at
+      FROM users u
+      LEFT JOIN registration_requests rr ON u.id = rr.user_id
+      WHERE u.status = 'pending_review'
+      ORDER BY rr.submitted_at ASC
+    `);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ユーザー承認
-router.post('/approve/:userId', requireAdmin, (req, res) => {
-  const { note } = req.body;
-  const db = getDB();
+router.post('/approve/:userId', requireAdmin, async (req, res) => {
+  try {
+    const { note } = req.body;
+    const { rows } = await pool.query(
+      "SELECT id FROM users WHERE id = $1 AND status = 'pending_review'",
+      [req.params.userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'ユーザーが見つかりません' });
 
-  const user = db.prepare("SELECT id FROM users WHERE id = ? AND status = 'pending_review'")
-    .get(req.params.userId);
-  if (!user) return res.status(404).json({ error: 'ユーザーが見つかりません' });
-
-  db.prepare("UPDATE users SET status = 'approved' WHERE id = ?").run(req.params.userId);
-  db.prepare(`
-    UPDATE registration_requests SET reviewed_at = CURRENT_TIMESTAMP, reviewer_id = ?
-    WHERE user_id = ?
-  `).run([req.session.userId, req.params.userId]);
-  db.prepare(`
-    INSERT INTO approval_logs (user_id, admin_id, action, note) VALUES (?, ?, 'approved', ?)
-  `).run([req.params.userId, req.session.userId, note || null]);
-
-  res.json({ success: true });
+    await pool.query("UPDATE users SET status = 'approved' WHERE id = $1", [req.params.userId]);
+    await pool.query(
+      'UPDATE registration_requests SET reviewed_at = NOW(), reviewer_id = $1 WHERE user_id = $2',
+      [req.session.userId, req.params.userId]
+    );
+    await pool.query(
+      "INSERT INTO approval_logs (user_id, admin_id, action, note) VALUES ($1, $2, 'approved', $3)",
+      [req.params.userId, req.session.userId, note || null]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ユーザー拒否
-router.post('/reject/:userId', requireAdmin, (req, res) => {
-  const { note } = req.body;
-  const db = getDB();
+router.post('/reject/:userId', requireAdmin, async (req, res) => {
+  try {
+    const { note } = req.body;
+    const { rows } = await pool.query(
+      "SELECT id FROM users WHERE id = $1 AND status = 'pending_review'",
+      [req.params.userId]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: 'ユーザーが見つかりません' });
 
-  const user = db.prepare("SELECT id FROM users WHERE id = ? AND status = 'pending_review'")
-    .get(req.params.userId);
-  if (!user) return res.status(404).json({ error: 'ユーザーが見つかりません' });
-
-  db.prepare("UPDATE users SET status = 'provisional' WHERE id = ?").run(req.params.userId);
-  db.prepare(`
-    INSERT INTO approval_logs (user_id, admin_id, action, note) VALUES (?, ?, 'rejected', ?)
-  `).run([req.params.userId, req.session.userId, note || null]);
-
-  res.json({ success: true });
+    await pool.query("UPDATE users SET status = 'provisional' WHERE id = $1", [req.params.userId]);
+    await pool.query(
+      "INSERT INTO approval_logs (user_id, admin_id, action, note) VALUES ($1, $2, 'rejected', $3)",
+      [req.params.userId, req.session.userId, note || null]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 全ユーザー一覧
-router.get('/users', requireAdmin, (req, res) => {
-  const db = getDB();
-  const users = db.prepare(`
-    SELECT id, name, address, phone, status, points, created_at FROM users ORDER BY created_at DESC
-  `).all();
-  res.json(users);
+router.get('/users', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, name, address, phone, status, points, created_at FROM users ORDER BY created_at DESC'
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ユーザー削除（自分自身と管理者は削除不可）
-router.delete('/users/:userId', requireAdmin, (req, res) => {
-  const userId = req.params.userId;
-  if (String(userId) === String(req.session.userId)) {
-    return res.status(400).json({ error: '自分自身は削除できません' });
-  }
-  const db = getDB();
-  const user = db.prepare('SELECT id, status FROM users WHERE id = ?').get(userId);
-  if (!user) return res.status(404).json({ error: 'ユーザーが見つかりません' });
-  if (user.status === 'admin') return res.status(400).json({ error: '管理者は削除できません' });
+// ユーザー削除
+router.delete('/users/:userId', requireAdmin, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    if (String(userId) === String(req.session.userId)) {
+      return res.status(400).json({ error: '自分自身は削除できません' });
+    }
+    const { rows } = await pool.query('SELECT id, status FROM users WHERE id = $1', [userId]);
+    if (rows.length === 0) return res.status(404).json({ error: 'ユーザーが見つかりません' });
+    if (rows[0].status === 'admin') return res.status(400).json({ error: '管理者は削除できません' });
 
-  db.prepare('DELETE FROM registration_requests WHERE user_id = ?').run(userId);
-  db.prepare('DELETE FROM point_logs WHERE user_id = ?').run(userId);
-  db.prepare('DELETE FROM approval_logs WHERE user_id = ?').run(userId);
-  db.prepare('DELETE FROM users WHERE id = ?').run(userId);
-  res.json({ success: true });
+    await pool.query('DELETE FROM registration_requests WHERE user_id = $1', [userId]);
+    await pool.query('DELETE FROM point_logs WHERE user_id = $1', [userId]);
+    await pool.query('DELETE FROM approval_logs WHERE user_id = $1', [userId]);
+    await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 地図投稿一覧（管理用）
-router.get('/posts', requireAdmin, (req, res) => {
-  const db = getDB();
-  const posts = db.prepare(`
-    SELECT mp.id, mp.title, mp.category, mp.status, mp.created_at, u.name as user_name
-    FROM map_posts mp LEFT JOIN users u ON mp.user_id = u.id
-    ORDER BY mp.created_at DESC
-  `).all();
-  res.json(posts);
+router.get('/posts', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT mp.id, mp.title, mp.category, mp.status, mp.created_at, u.name as user_name
+      FROM map_posts mp LEFT JOIN users u ON mp.user_id = u.id
+      ORDER BY mp.created_at DESC
+    `);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 地図投稿削除
-router.delete('/posts/:id', requireAdmin, (req, res) => {
-  const db = getDB();
-  db.prepare('DELETE FROM map_option_votes WHERE post_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM map_post_options WHERE post_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM map_votes WHERE post_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM map_comments WHERE post_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM map_assignments WHERE post_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM map_posts WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+router.delete('/posts/:id', requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM map_option_votes WHERE post_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM map_post_options WHERE post_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM map_votes WHERE post_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM map_comments WHERE post_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM map_assignments WHERE post_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM map_views WHERE post_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM map_posts WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 議題一覧（管理用）
-router.get('/proposals', requireAdmin, (req, res) => {
-  const db = getDB();
-  const proposals = db.prepare(`
-    SELECT p.id, p.title, p.status, p.created_at, u.name as user_name
-    FROM proposals p LEFT JOIN users u ON p.user_id = u.id
-    ORDER BY p.created_at DESC
-  `).all();
-  res.json(proposals);
+router.get('/proposals', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT p.id, p.title, p.status, p.created_at, u.name as user_name
+      FROM proposals p LEFT JOIN users u ON p.user_id = u.id
+      ORDER BY p.created_at DESC
+    `);
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 議題削除
-router.delete('/proposals/:id', requireAdmin, (req, res) => {
-  const db = getDB();
-  db.prepare('DELETE FROM proposal_option_votes WHERE proposal_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM proposal_options WHERE proposal_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM votes WHERE proposal_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM proposal_comments WHERE proposal_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM proposal_reads WHERE proposal_id = ?').run(req.params.id);
-  db.prepare('DELETE FROM proposals WHERE id = ?').run(req.params.id);
-  res.json({ success: true });
+router.delete('/proposals/:id', requireAdmin, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM proposal_option_votes WHERE proposal_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM proposal_options WHERE proposal_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM votes WHERE proposal_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM proposal_comments WHERE proposal_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM proposal_reads WHERE proposal_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM proposals WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ステータス変更（役員昇格など）
-router.patch('/users/:userId/status', requireAdmin, (req, res) => {
-  const { status } = req.body;
-  const valid = ['provisional', 'pending_review', 'approved', 'officer', 'admin'];
-  if (!valid.includes(status)) return res.status(400).json({ error: 'ステータスが不正です' });
+// ステータス変更
+router.patch('/users/:userId/status', requireAdmin, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const valid = ['provisional', 'pending_review', 'approved', 'officer', 'admin'];
+    if (!valid.includes(status)) return res.status(400).json({ error: 'ステータスが不正です' });
 
-  const db = getDB();
-  db.prepare('UPDATE users SET status = ? WHERE id = ?').run([status, req.params.userId]);
-  res.json({ success: true });
+    await pool.query('UPDATE users SET status = $1 WHERE id = $2', [status, req.params.userId]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;
