@@ -214,10 +214,10 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Hira
 
 /* ── toast通知 ── */
 .toast {
-  position: fixed; bottom: calc(var(--tab-h) + var(--safe-bottom) + 16px);
-  left: 50%; transform: translateX(-50%) translateY(100px);
+  position: fixed; bottom: 100px;
+  left: 50%; transform: translateX(-50%) translateY(150px);
   background: #111; color: #fff; padding: 10px 20px; border-radius: 999px;
-  font-size: 14px; z-index: 200; transition: transform .3s ease;
-  white-space: nowrap;
+  font-size: 14px; z-index: 9999; transition: transform .3s ease;
+  white-space: nowrap; max-width: 90vw; text-overflow: ellipsis; overflow: hidden;
 }
 .toast.show { transform: translateX(-50%) translateY(0); }
