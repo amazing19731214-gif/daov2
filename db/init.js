@@ -383,6 +383,218 @@ async function initDB() {
     await pool.query("UPDATE users SET nickname='admin' WHERE id=$1", [adminCheck.rows[0].id]);
   }
 
+  // 資料・テンプレートテーブル
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS documents (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT '一般',
+      content TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // 在庫管理テーブル
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS inventory_items (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'その他',
+      quantity INTEGER NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT '個',
+      location TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      updated_at TIMESTAMP DEFAULT NOW(),
+      updated_by INTEGER REFERENCES users(id)
+    )
+  `);
+
+  // 会計報告テーブル
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS accounting_reports (
+      id SERIAL PRIMARY KEY,
+      fiscal_year INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  // 会計明細テーブル
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS accounting_items (
+      id SERIAL PRIMARY KEY,
+      report_id INTEGER NOT NULL REFERENCES accounting_reports(id),
+      type TEXT NOT NULL CHECK(type IN ('income','expense')),
+      category TEXT NOT NULL DEFAULT 'その他',
+      item_name TEXT NOT NULL,
+      amount INTEGER NOT NULL DEFAULT 0,
+      notes TEXT DEFAULT '',
+      sort_order INTEGER DEFAULT 0
+    )
+  `);
+
+  // 資料初期データ
+  const docCheck = await pool.query('SELECT id FROM documents LIMIT 1');
+  if (docCheck.rows.length === 0) {
+    const docs = [
+      ['缶どろぼうの対処法', 'マニュアル', `■ 缶どろぼうへの対処手順
+
+【1. 証拠の確保】
+・盗難を発見したら、まず現場の写真・動画を撮影してください
+・防犯カメラの映像が残っている場合は保存しておいてください
+・目撃者がいれば証言をお願いしてください
+
+【2. 警察への通報・被害届の提出】
+・最寄りの警察署または交番に被害届を提出してください
+・被害品（缶・金属類）の種類・数量・推定金額を記録しておくと手続きがスムーズです
+・被害届の受理番号を控えておいてください
+
+【3. 自治会への報告】
+・班長または役員にご報告ください
+・このアプリの「地図」→「地域の問題」から投稿して住民と情報共有できます
+
+【4. 再発防止策】
+・金属類は施錠した場所に保管してください
+・夜間・早朝の不審者に注意し、見かけた場合は110番通報してください
+・複数回被害がある場合は、防犯カメラの設置をご検討ください
+
+【5. 悪質な場合（繰り返し盗難など）】
+・内容証明郵便による警告（「内容証明テンプレート」参照）
+・告訴状の提出（窃盗罪：刑法第235条）（「告訴状テンプレート」参照）`, 1],
+
+      ['内容証明テンプレート（警告書）', 'テンプレート', `通　知　書
+
+令和　　年　　月　　日
+
+　　　　　　　　　　様
+
+〒
+住所：
+氏名：　　　　　　　　　　　　　　印
+
+　通知人は、貴殿に対し以下のとおり通知いたします。
+
+記
+
+１．令和　　年　　月　　日頃より、当方所有の金属製資源ごみ（以下「本件物品」という）が繰り返し無断で持ち去られる被害が発生しています。
+
+２．貴殿が本件物品を持ち去っている場面を目撃・記録しており、その行為は窃盗罪（刑法第235条）に該当する可能性があります。
+
+３．本通知到達後も同様の行為が継続された場合には、刑事告訴を含む法的手段を取ることをここに通知いたします。
+
+４．本通知書到達後、速やかに本件行為を中止されるよう強くお願いいたします。
+
+以上
+
+※内容証明郵便で送付する場合は、同じ内容のものを3部作成し（差出人用・相手方用・郵便局保管用）、郵便局の窓口で手続きを行ってください。`, 2],
+
+      ['告訴状テンプレート（窃盗罪）', 'テンプレート', `告　訴　状
+
+令和　　年　　月　　日
+
+○○警察署長　殿
+
+告訴人
+〒
+住所：
+氏名：　　　　　　　　　　　　　　印
+電話：
+
+被告訴人
+住所：不明（または判明している場合は記載）
+氏名：不明（または判明している場合は記載）
+
+第一　告訴の趣旨
+　被告訴人の下記行為は窃盗罪（刑法第235条）に該当すると思料するので、厳重な処罰を求めるため告訴します。
+
+第二　告訴の事実
+１．告訴人は、〒○○○-○○○○　○○市○○に居住する者です。
+２．令和　　年　　月　　日頃から令和　　年　　月　　日頃にかけて、告訴人方敷地内に置いていた金属製資源ごみ（アルミ缶・鉄くず等、推定価値○○円相当）が何者かに繰り返し持ち去られました。
+３．令和　　年　　月　　日、防犯カメラ映像および目撃証言により、被告訴人が本件物品を持ち去る様子が確認されました。
+
+第三　証拠
+１．防犯カメラ映像（○○年○月○日撮影）
+２．目撃者の証言（氏名○○）
+３．被害状況の写真
+
+第四　被害額
+　金　○○○円相当
+
+　以上のとおり告訴します。
+
+添付書類
+１．防犯カメラ映像（コピー）　１部
+２．被害状況写真　　　　　　　○部`, 3],
+
+      ['不審者を見かけたときの対応', 'マニュアル', `■ 不審者を見かけたときの対応
+
+【その場での対応】
+・一人で声をかけないでください
+・距離を保ちながら、特徴（服装・体格・逃走方向など）を記録してください
+・すぐに110番（警察）または自治会役員に連絡してください
+
+【連絡先】
+・緊急時：110（警察）／119（救急・火災）
+・厚木警察署：046-223-0110
+・自治会長：アプリの管理者ページ参照
+
+【記録すべき情報】
+□ 発見日時・場所
+□ 人数
+□ 性別・年齢（推定）
+□ 身長・体格
+□ 服装・帽子・マスクの有無
+□ 所持品（バッグ・車・自転車など）
+□ 行動の内容
+□ 逃走方向・乗り物
+
+【事後対応】
+・班長または役員に報告してください
+・同様の被害がないか周辺住民に声掛けをお願いします
+・地図アプリから「不審者情報」として投稿し、地域で情報共有しましょう`, 4],
+    ];
+    for (const [title, category, content, sort_order] of docs) {
+      await pool.query(
+        'INSERT INTO documents (title, category, content, sort_order) VALUES ($1, $2, $3, $4)',
+        [title, category, content, sort_order]
+      );
+    }
+    console.log('✅ 資料初期データ投入完了');
+  }
+
+  // 在庫初期データ
+  const invCheck = await pool.query('SELECT id FROM inventory_items LIMIT 1');
+  if (invCheck.rows.length === 0) {
+    const items = [
+      ['消火器', '消防・防災', 5, '本', '自治会館倉庫', '点検期限を確認のこと'],
+      ['担架', '救護用品', 2, '台', '自治会館倉庫', ''],
+      ['毛布', '救護用品', 20, '枚', '自治会館倉庫', ''],
+      ['救急箱', '救護用品', 3, '個', '自治会館倉庫', '定期的に中身を確認すること'],
+      ['懐中電灯', '防災用品', 10, '本', '自治会館倉庫', '電池交換：年1回'],
+      ['乾電池（単1）', '防災用品', 30, '本', '自治会館倉庫', ''],
+      ['乾電池（単3）', '防災用品', 50, '本', '自治会館倉庫', ''],
+      ['非常食（アルファ米）', '備蓄食料', 100, '食', '自治会館倉庫', '賞味期限確認要'],
+      ['飲料水（2L）', '備蓄食料', 50, '本', '自治会館倉庫', '賞味期限確認要'],
+      ['スコップ', '作業用品', 5, '本', '自治会館倉庫', ''],
+      ['バール', '作業用品', 3, '本', '自治会館倉庫', ''],
+      ['ロープ（20m）', '作業用品', 4, '本', '自治会館倉庫', ''],
+      ['拡声器', '通信・連絡', 2, '台', '自治会館倉庫', '充電確認'],
+      ['防災無線機', '通信・連絡', 3, '台', '自治会館倉庫', ''],
+      ['テント（3×3m）', 'その他', 2, '張', '自治会館倉庫', ''],
+      ['発電機', 'その他', 1, '台', '自治会館倉庫', '燃料・動作確認：年1回'],
+    ];
+    for (const [name, category, quantity, unit, location, notes] of items) {
+      await pool.query(
+        'INSERT INTO inventory_items (name, category, quantity, unit, location, notes) VALUES ($1,$2,$3,$4,$5,$6)',
+        [name, category, quantity, unit, location, notes]
+      );
+    }
+    console.log('✅ 在庫初期データ投入完了');
+  }
+
   console.log('✅ DB初期化完了');
 }
 

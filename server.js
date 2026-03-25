@@ -14,6 +14,9 @@ const adminRoutes     = require('./routes/admin');
 const scheduleRoutes  = require('./routes/schedule');
 const qaRoutes        = require('./routes/qa');
 const noticeRoutes    = require('./routes/notices');
+const docsRoutes      = require('./routes/docs');
+const inventoryRoutes = require('./routes/inventory');
+const accountingRoutes = require('./routes/accounting');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,7 +51,10 @@ app.use('/api/points',    pointRoutes);
 app.use('/api/admin',     adminRoutes);
 app.use('/api/schedule',  scheduleRoutes);
 app.use('/api/qa',        qaRoutes);
-app.use('/api/notices',   noticeRoutes);
+app.use('/api/notices',    noticeRoutes);
+app.use('/api/docs',       docsRoutes);
+app.use('/api/inventory',  inventoryRoutes);
+app.use('/api/accounting', accountingRoutes);
 
 app.get('/pages/:page', (req, res) => {
   const file = path.join(__dirname, 'public', 'pages', req.params.page + '.html');

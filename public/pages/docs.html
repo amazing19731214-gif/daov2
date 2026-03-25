@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>資料室 - 自治会DAO</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="back-btn">←</a>
+  <h1>📁 資料室</h1>
+</div>
+
+<div id="page-body" style="padding-bottom:80px;">
+  <div class="loading" style="padding:40px;text-align:center;">読み込み中…</div>
+</div>
+
+<nav class="tab-bar">
+  <a class="tab-item" href="/"><span class="icon">🏠</span>お知らせ</a>
+  <a class="tab-item" href="/pages/map"><span class="icon">🗺️</span>地図</a>
+  <a class="tab-item" href="/pages/proposals"><span class="icon">📋</span>議題</a>
+  <a class="tab-item" href="/pages/post"><span class="icon">✏️</span>投稿</a>
+  <a class="tab-item" href="/pages/schedule"><span class="icon">📅</span>予定</a>
+  <a class="tab-item" href="/pages/mypage"><span class="icon">👤</span>My</a>
+</nav>
+
+<div id="toast" class="toast"></div>
+<script src="/js/common.js"></script>
+<script>
+  let _docs = [];
+  let _user = null;
+  let _canEdit = false;
+
+  function escHtml(str) {
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');
+  }
+
+  async function init() {
+    _user = await fetchCurrentUser().catch(() => null);
+    _canEdit = _user && ['admin','officer'].includes(_user.status);
+
+    const res = await fetch('/api/docs');
+    _docs = await res.json();
+    render();
+  }
+
+  function render() {
+    const groups = {};
+    _docs.forEach(d => {
+      if (!groups[d.category]) groups[d.category] = [];
+      groups[d.category].push(d);
+    });
+
+    let html = '';
+
+    if (_canEdit) {
+      html += `
+        <div style="padding:12px 16px 0;">
+          <button class="btn btn-primary btn-sm" onclick="addDoc()">＋ 資料を追加</button>
+        </div>`;
+    }
+
+    if (_docs.length === 0) {
+      html += `<div style="text-align:center;padding:60px 0;color:#9ca3af;">
+        <div style="font-size:40px;margin-bottom:8px;">📂</div>
+        <div>資料がありません</div>
+      </div>`;
+    }
+
+    Object.keys(groups).sort().forEach(cat => {
+      html += `<div style="padding:14px 16px 4px;">
+        <div style="font-size:12px;font-weight:700;color:#2563eb;letter-spacing:.05em;text-transform:uppercase;">${escHtml(cat)}</div>
+      </div>`;
+      groups[cat].forEach(d => {
+        html += `
+          <div class="card" style="margin:4px 16px;cursor:pointer;" onclick="openDoc(${d.id})">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div style="font-size:24px;">📄</div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(d.title)}</div>
+                <div style="font-size:12px;color:#9ca3af;margin-top:2px;">${formatDate(d.updated_at)}</div>
+              </div>
+              ${_canEdit ? `
+                <div style="display:flex;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+                  <button class="btn btn-secondary btn-sm" onclick="editDoc(${d.id})">✏️</button>
+                  <button class="btn btn-danger btn-sm" onclick="deleteDoc(${d.id},'${escHtml(d.title)}')">🗑</button>
+                </div>` : ''}
+            </div>
+          </div>`;
+      });
+    });
+
+    document.getElementById('page-body').innerHTML = html;
+  }
+
+  function openDoc(id) {
+    const doc = _docs.find(d => d.id === id);
+    if (!doc) return;
+    const modal = document.createElement('div');
+    modal.id = 'doc-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-height:90vh;overflow-y:auto;padding:20px 16px 40px;">
+        <div style="font-size:11px;color:#2563eb;font-weight:700;margin-bottom:6px;">${escHtml(doc.category)}</div>
+        <div style="font-weight:800;font-size:18px;margin-bottom:12px;">${escHtml(doc.title)}</div>
+        <div style="font-size:14px;line-height:1.8;white-space:pre-wrap;color:#374151;">${escHtml(doc.content)}</div>
+        <div style="margin-top:20px;">
+          <button class="btn btn-secondary btn-block" onclick="document.getElementById('doc-modal').remove()">閉じる</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  function docForm(d = {}) {
+    const cats = ['通報・警察','法的手続き','防災','ゴミ・清掃','会計・規約','一般'];
+    return `
+      <div style="display:grid;gap:10px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;">カテゴリ</label>
+          <select id="df-cat" class="form-select" style="margin-top:4px;">
+            ${cats.map(c => `<option ${d.category===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;">タイトル *</label>
+          <input id="df-title" class="form-input" style="margin-top:4px;" value="${escHtml(d.title||'')}">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;">内容</label>
+          <textarea id="df-content" class="form-textarea" style="margin-top:4px;min-height:160px;">${escHtml(d.content||'')}</textarea>
+        </div>
+      </div>`;
+  }
+
+  function showModal(title, bodyHtml, onSave) {
+    const existing = document.getElementById('edit-modal');
+    if (existing) existing.remove();
+    const modal = document.createElement('div');
+    modal.id = 'edit-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;';
+    modal.innerHTML = `
+      <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-height:92vh;overflow-y:auto;padding:20px 16px 40px;">
+        <div style="font-weight:700;font-size:17px;margin-bottom:16px;">${title}</div>
+        ${bodyHtml}
+        <div style="display:flex;gap:8px;margin-top:16px;">
+          <button class="btn btn-secondary btn-block" onclick="document.getElementById('edit-modal').remove()">キャンセル</button>
+          <button class="btn btn-primary btn-block" id="modal-save-btn">保存</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('modal-save-btn').onclick = onSave;
+  }
+
+  function addDoc() {
+    showModal('資料を追加', docForm(), async () => {
+      const body = {
+        category: document.getElementById('df-cat').value,
+        title:    document.getElementById('df-title').value.trim(),
+        content:  document.getElementById('df-content').value.trim(),
+      };
+      if (!body.title) { showToast('タイトルは必須です'); return; }
+      const res = await fetch('/api/docs', {
+        method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('edit-modal').remove();
+        showToast('追加しました');
+        _docs = await (await fetch('/api/docs')).json();
+        render();
+      } else showToast(data.error);
+    });
+  }
+
+  function editDoc(id) {
+    const doc = _docs.find(d => d.id === id);
+    if (!doc) return;
+    showModal('資料を編集', docForm(doc), async () => {
+      const body = {
+        category: document.getElementById('df-cat').value,
+        title:    document.getElementById('df-title').value.trim(),
+        content:  document.getElementById('df-content').value.trim(),
+      };
+      if (!body.title) { showToast('タイトルは必須です'); return; }
+      const res = await fetch(`/api/docs/${id}`, {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('edit-modal').remove();
+        showToast('更新しました');
+        _docs = await (await fetch('/api/docs')).json();
+        render();
+      } else showToast(data.error);
+    });
+  }
+
+  async function deleteDoc(id, title) {
+    if (!confirm(`「${title}」を削除しますか？`)) return;
+    const res = await fetch(`/api/docs/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      _docs = _docs.filter(d => d.id !== id);
+      render();
+      showToast('削除しました');
+    } else showToast(data.error);
+  }
+
+  init();
+</script>
+</body>
+</html>
