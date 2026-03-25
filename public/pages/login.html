@@ -23,46 +23,31 @@
 
   <div id="login-content" style="width:100%;max-width:360px;display:none;">
 
-    <!-- 使い方説明 -->
     <div class="step-box">
       <strong>📋 はじめての方へ</strong><br>
-      ① お名前を入力してログイン<br>
+      ① ニックネームを入力してログイン<br>
       ② 住所・電話番号を登録して申請<br>
       ③ 管理者が承認したら正会員に！
     </div>
 
-    <!-- LINEログインボタン -->
     <div class="card" style="margin:0 0 16px;">
-      <a href="/api/auth/line" class="btn btn-primary btn-block" style="display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 5.92 2 10.72c0 3.24 2.04 6.08 5.12 7.68-.22.8-.8 2.9-.92 3.36-.16.56.2.56.44.4.18-.12 2.88-1.96 4.04-2.76.42.06.86.08 1.32.08 5.52 0 10-3.92 10-8.76S17.52 2 12 2z"/></svg>
-        LINEでログイン
-      </a>
-    </div>
-
-    <!-- 管理者ログイン（折りたたみ） -->
-    <details style="margin-top:8px;">
-      <summary style="font-size:12px;color:#9ca3af;cursor:pointer;text-align:center;">
-        管理者・テスト用ログイン
-      </summary>
-      <div class="card" style="margin-top:8px;">
-        <div class="form-group">
-          <label class="form-label">LINE ID（テスト用）</label>
-          <input type="text" id="line_id" class="form-input" placeholder="admin_line_id">
-        </div>
-        <button class="btn btn-secondary btn-block btn-sm" onclick="loginWithId()">
-          IDでログイン
-        </button>
+      <div class="form-group">
+        <label class="form-label">ニックネーム <span style="color:#ef4444;">*</span></label>
+        <input type="text" id="nickname" class="form-input" placeholder="例：たろう、田中">
       </div>
-    </details>
+      <div class="form-group" id="password-group" style="display:none;">
+        <label class="form-label">パスワード <span style="color:#ef4444;">*</span></label>
+        <input type="password" id="password" class="form-input" placeholder="パスワードを入力">
+      </div>
+      <button class="btn btn-primary btn-block" onclick="doLogin()">ログイン / はじめる</button>
+    </div>
 
   </div>
 </div>
 
 <div id="toast" class="toast"></div>
-
 <script src="/js/common.js"></script>
 <script>
-  // ログイン済みならトップへ、未ログインならフォームを表示
   fetch('/api/auth/me').then(r => r.json()).then(d => {
     if (d.loggedIn) {
       window.location.href = '/';
@@ -71,39 +56,40 @@
     }
   });
 
-  // 通常ログイン（名前から自動でIDを生成）
-  async function login() {
-    const display_name = document.getElementById('display_name').value.trim();
-    if (!display_name) { showToast('お名前を入力してください'); return; }
+  let needsPassword = false;
 
-    // 名前からユニークなIDを生成（本番ではLINEのIDが入る）
-    const line_id = 'user_' + display_name.replace(/\s/g, '') + '_' + Date.now();
+  async function doLogin() {
+    const nickname = document.getElementById('nickname').value.trim();
+    if (!nickname) { showToast('ニックネームを入力してください'); return; }
 
-    await doLogin(line_id, display_name);
-  }
+    const password = needsPassword ? document.getElementById('password').value : undefined;
+    if (needsPassword && !password) { showToast('パスワードを入力してください'); return; }
 
-  // テスト用：IDを直接指定してログイン
-  async function loginWithId() {
-    const line_id = document.getElementById('line_id').value.trim();
-    if (!line_id) { showToast('LINE IDを入力してください'); return; }
-    await doLogin(line_id, '');
-  }
-
-  async function doLogin(line_id, display_name) {
-    const res = await fetch('/api/auth/line-mock', {
+    const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ line_id, display_name })
+      body: JSON.stringify({ nickname, password })
     });
     const data = await res.json();
 
+    if (data.requiresPassword) {
+      needsPassword = true;
+      document.getElementById('password-group').style.display = 'block';
+      document.getElementById('password').focus();
+      showToast('パスワードを入力してください');
+      return;
+    }
     if (data.success) {
-      // ログイン後はまず地図へ（申請はバナーから促す）
       window.location.href = '/';
     } else {
       showToast(data.error || 'ログイン失敗');
     }
   }
+
+  // Enterキー対応
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
 </script>
 </body>
 </html>

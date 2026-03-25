@@ -196,6 +196,15 @@ function initDB() {
     )
   `);
 
+  // ニックネームログイン用カラム追加（マイグレーション）
+  try { db.exec("ALTER TABLE users ADD COLUMN nickname TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE users ADD COLUMN password_salt TEXT"); } catch(e) {}
+  // 管理者にニックネームを設定（未設定の場合）
+  try {
+    db.prepare("UPDATE users SET nickname='admin' WHERE status='admin' AND nickname IS NULL").run();
+  } catch(e) {}
+
   // map_posts に priority カラム追加（既存DBへのマイグレーション）
   try {
     db.exec("ALTER TABLE map_posts ADD COLUMN priority TEXT DEFAULT '様子見'");
